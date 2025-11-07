@@ -1,17 +1,19 @@
 // app/(tabs)/premium.tsx
 
 import { Check } from 'lucide-react-native';
-import React from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import { useSubscription } from '../../context/SubscriptionContext';
 import { SUBSCRIPTION_PLANS } from '../../types/subscription';
+import AuthScreen from '../../components/screens/AuthScreen';
 
 export default function PremiumScreen() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const { subscription, upgradeSubscription, loading } = useSubscription();
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   const handleUpgrade = async (tier: 'FREE' | 'PRO' | 'ULTRA') => {
     if (!user) {
@@ -20,6 +22,10 @@ export default function PremiumScreen() {
         t('loginRequiredMessage', 'Please login to subscribe'),
         [
           { text: t('cancel', 'Cancel'), style: 'cancel' },
+          {
+            text: t('login', 'Login'),
+            onPress: () => setShowAuthModal(true)
+          },
         ]
       );
       return;
@@ -139,8 +145,26 @@ export default function PremiumScreen() {
           <Text style={styles.loginPromptText}>
             {t('loginToSubscribe', 'Login to subscribe')}
           </Text>
+          <TouchableOpacity
+            style={styles.loginPromptButton}
+            onPress={() => setShowAuthModal(true)}
+          >
+            <Text style={styles.loginPromptButtonText}>
+              {t('loginOrSignup', 'Login / Sign Up')}
+            </Text>
+          </TouchableOpacity>
         </View>
       )}
+
+      {/* Auth Modal */}
+      <Modal
+        visible={showAuthModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowAuthModal(false)}
+      >
+        <AuthScreen onClose={() => setShowAuthModal(false)} />
+      </Modal>
     </ScrollView>
   );
 }
@@ -295,11 +319,26 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#FCD34D',
+    alignItems: 'center',
   },
   loginPromptText: {
-    fontSize: 14,
+    fontSize: 16,
     color: '#92400E',
     textAlign: 'center',
     fontWeight: '500',
+    marginBottom: 12,
+  },
+  loginPromptButton: {
+    backgroundColor: '#F59E0B',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    width: '100%',
+  },
+  loginPromptButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
   },
 });
