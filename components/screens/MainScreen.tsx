@@ -101,6 +101,14 @@ const MainScreen: React.FC<MainScreenProps> = ({ location, onLocationReset, appS
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showAIScanner, setShowAIScanner] = useState<boolean>(false);
 
+  // Check if AI Scanner is available
+  const isAIScannerAvailable = useMemo(() => {
+    // Check subscription tier
+    if (!subscription) return false;
+    if (subscription.tier === 'FREE') return false;
+    return true;
+  }, [subscription]);
+
   const categories = useMemo<string[]>(() => {
     if (!wasteCategories) return [];
     return Object.keys(wasteCategories).filter(key => 
@@ -229,8 +237,8 @@ const MainScreen: React.FC<MainScreenProps> = ({ location, onLocationReset, appS
         [
           { text: t('cancel', 'Cancel'), style: 'cancel' },
           { text: t('upgrade', 'Upgrade'), onPress: () => {
-            // Navigate to premium tab
-            console.log('Navigate to premium');
+            // TODO: Navigate to premium tab
+            console.log('Navigate to premium tab');
           }},
         ]
       );
@@ -280,14 +288,18 @@ const MainScreen: React.FC<MainScreenProps> = ({ location, onLocationReset, appS
         <TouchableOpacity
           style={[
             styles.cameraButton,
-            (!subscription || subscription.tier === 'FREE') && styles.cameraButtonDisabled
+            !isAIScannerAvailable && styles.cameraButtonDisabled
           ]}
           onPress={handleOpenAIScanner}
+          disabled={false} // Always allow click to show alert
         >
-          <CameraIcon color="#FFFFFF" />
-          <Text style={styles.cameraButtonText}>
+          <CameraIcon color={isAIScannerAvailable ? "#FFFFFF" : "#9CA3AF"} />
+          <Text style={[
+            styles.cameraButtonText,
+            !isAIScannerAvailable && styles.cameraButtonTextDisabled
+          ]}>
             {t('aiGarbageScanner', 'AI Garbage Scanner')}
-            {(!subscription || subscription.tier === 'FREE') && ' 🔒'}
+            {!isAIScannerAvailable && ' 🔒'}
           </Text>
         </TouchableOpacity>
         <View style={styles.searchRow}>
@@ -536,9 +548,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  cameraButtonTextDisabled: {
+    color: '#E5E7EB',
+  },
   cameraButtonDisabled: {
-    backgroundColor: '#9CA3AF',
-    opacity: 0.7,
+    backgroundColor: '#6B7280',
+    opacity: 0.6,
   },
   searchRow: {
     flexDirection: 'row'
