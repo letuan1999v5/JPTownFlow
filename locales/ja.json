@@ -187,5 +187,37 @@
   "subscriptionSuccess": "サブスクリプション成功！",
   "subscriptionSuccessDesc": "{tier}プランにアップグレードしました",
   "subscriptionError": "サブスクリプションエラー",
-  "subscriptionErrorDesc": "アップグレードに失敗しました。もう一度お試しください。"
+  "subscriptionErrorDesc": "アップグレードに失敗しました。もう一度お試しください。",
+
+  "aiGarbageScanner": "AIゴミスキャナー",
+  "premiumFeature": "プレミアム機能",
+  "aiScannerRequiresPremium": "AIゴミスキャナーはPROまたはULTRAプランが必要です",
+  "upgrade": "アップグレード",
+  "noRulesAvailable": "ルールがありません",
+  "pleaseSelectLocation": "まずゴミのルールがある地域を選択してください",
+
+  "aiScannerTitle": "AIゴミスキャナー",
+  "aiScannerSubtitle": "写真を撮るか画像を選択してゴミの種類を識別します",
+  "takePhoto": "写真を撮る",
+  "chooseFromGallery": "ギャラリーから選択",
+  "analyzingImage": "画像を分析中...",
+  "identified": "識別されました",
+  "confidence": "信頼度",
+  "category": "カテゴリ",
+  "disposalInstructions": "廃棄方法",
+  "additionalInfo": "追加情報",
+  "localRules": "地域のルール",
+  "scanAnother": "別のをスキャン",
+  "done": "完了",
+
+  "permissionRequired": "許可が必要",
+  "cameraPermissionMessage": "ゴミをスキャンするにはカメラの許可が必要です",
+  "cameraError": "カメラエラー",
+  "imagePickerError": "画像選択エラー",
+  "analysisError": "分析エラー",
+  "analysisErrorMessage": "画像の分析に失敗しました。もう一度お試しください。",
+
+  "cancel": "キャンセル",
+  "confirm": "確認",
+  "error": "エラー"
 }

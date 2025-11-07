@@ -177,5 +177,37 @@
   "subscriptionSuccess": "Đăng ký thành công!",
   "subscriptionSuccessDesc": "Bạn đã nâng cấp lên gói {tier}",
   "subscriptionError": "Lỗi đăng ký",
-  "subscriptionErrorDesc": "Không thể nâng cấp gói. Vui lòng thử lại."
+  "subscriptionErrorDesc": "Không thể nâng cấp gói. Vui lòng thử lại.",
+
+  "aiGarbageScanner": "Quét rác thông minh AI",
+  "premiumFeature": "Tính năng Premium",
+  "aiScannerRequiresPremium": "Quét rác AI yêu cầu gói PRO hoặc ULTRA",
+  "upgrade": "Nâng cấp",
+  "noRulesAvailable": "Chưa có quy tắc",
+  "pleaseSelectLocation": "Vui lòng chọn khu vực có quy tắc đổ rác trước",
+
+  "aiScannerTitle": "Quét rác AI",
+  "aiScannerSubtitle": "Chụp ảnh hoặc chọn ảnh để nhận diện loại rác",
+  "takePhoto": "Chụp ảnh",
+  "chooseFromGallery": "Chọn từ thư viện",
+  "analyzingImage": "Đang phân tích ảnh...",
+  "identified": "Đã nhận diện",
+  "confidence": "Độ chính xác",
+  "category": "Phân loại",
+  "disposalInstructions": "Hướng dẫn vứt rác",
+  "additionalInfo": "Thông tin thêm",
+  "localRules": "Quy tắc địa phương",
+  "scanAnother": "Quét ảnh khác",
+  "done": "Xong",
+
+  "permissionRequired": "Yêu cầu quyền truy cập",
+  "cameraPermissionMessage": "Chúng tôi cần quyền truy cập camera để quét rác",
+  "cameraError": "Lỗi camera",
+  "imagePickerError": "Lỗi chọn ảnh",
+  "analysisError": "Lỗi phân tích",
+  "analysisErrorMessage": "Không thể phân tích ảnh. Vui lòng thử lại.",
+
+  "cancel": "Hủy",
+  "confirm": "Xác nhận",
+  "error": "Lỗi"
 }

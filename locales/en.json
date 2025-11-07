@@ -187,5 +187,37 @@
   "subscriptionSuccess": "Subscription Successful!",
   "subscriptionSuccessDesc": "You have upgraded to {tier} plan",
   "subscriptionError": "Subscription Error",
-  "subscriptionErrorDesc": "Failed to upgrade. Please try again."
+  "subscriptionErrorDesc": "Failed to upgrade. Please try again.",
+
+  "aiGarbageScanner": "AI Garbage Scanner",
+  "premiumFeature": "Premium Feature",
+  "aiScannerRequiresPremium": "AI Garbage Scanner requires PRO or ULTRA subscription",
+  "upgrade": "Upgrade",
+  "noRulesAvailable": "No Rules Available",
+  "pleaseSelectLocation": "Please select a location with garbage rules first",
+
+  "aiScannerTitle": "AI Garbage Scanner",
+  "aiScannerSubtitle": "Take a photo or select an image to identify garbage type",
+  "takePhoto": "Take Photo",
+  "chooseFromGallery": "Choose from Gallery",
+  "analyzingImage": "Analyzing image...",
+  "identified": "Identified",
+  "confidence": "Confidence",
+  "category": "Category",
+  "disposalInstructions": "Disposal Instructions",
+  "additionalInfo": "Additional Information",
+  "localRules": "Local Rules",
+  "scanAnother": "Scan Another",
+  "done": "Done",
+
+  "permissionRequired": "Permission Required",
+  "cameraPermissionMessage": "We need camera permission to scan garbage",
+  "cameraError": "Camera Error",
+  "imagePickerError": "Image Picker Error",
+  "analysisError": "Analysis Error",
+  "analysisErrorMessage": "Failed to analyze image. Please try again.",
+
+  "cancel": "Cancel",
+  "confirm": "Confirm",
+  "error": "Error"
 }
