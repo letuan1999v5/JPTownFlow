@@ -161,5 +161,13 @@
   "authErrorInvalidCredential": "メールアドレスまたはパスワードが間違っています。",
   "authErrorWeakPassword": "パスワードは6文字以上である必要があります。",
   "authErrorPasswordMismatch": "パスワードが一致しません。",
-  "authErrorUnknown": "エラーが発生しました。もう一度お試しください。"
+  "authErrorEmailNotVerified": "ログインする前にメールアドレスを確認してください。",
+  "authErrorTooManyRequests": "リクエストが多すぎます。しばらくしてからもう一度お試しください。",
+  "authErrorUnknown": "エラーが発生しました。もう一度お試しください。",
+
+  "verificationEmailSent": "確認メールを送信しました！",
+  "verificationEmailSentDesc": "受信トレイを確認し、確認リンクをクリックして登録を完了してください。",
+  "verificationEmailResent": "確認メールを再送信しました！",
+  "resendVerificationEmail": "確認メールを再送信",
+  "checkEmailAndLogin": "確認後、ログインできます。"
 }

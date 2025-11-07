@@ -41,13 +41,16 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onClose }) => {
   // SỬA: Thêm kiểu (boolean) cho useState
   const [loading, setLoading] = useState<boolean>(false);
   const [localError, setLocalError] = useState<string>('');
-  
+  const [showVerificationMessage, setShowVerificationMessage] = useState<boolean>(false);
+  const [verificationResent, setVerificationResent] = useState<boolean>(false);
+
   // SỬA: Ép kiểu cho hook (hoặc bạn có thể sửa file useAuth.js thành .ts)
-  const { signup, login, error } = useAuth();
+  const { signup, login, error, resendVerificationEmail } = useAuth();
 
   const handleSubmit = async (): Promise<void> => {
     // Reset local error
     setLocalError('');
+    setVerificationResent(false);
 
     // Validate confirm password for signup
     if (!isLoginView && password !== confirmPassword) {
@@ -60,13 +63,26 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onClose }) => {
 
     if (isLoginView) {
       result = await login(email, password);
+      setLoading(false);
+      if (result) {
+        onClose();
+      }
     } else {
       result = await signup(email, password);
+      setLoading(false);
+      if (result) {
+        // Hiển thị thông báo verification email đã gửi
+        setShowVerificationMessage(true);
+      }
     }
-    setLoading(false);
+  };
 
+  const handleResendVerification = async (): Promise<void> => {
+    const result = await resendVerificationEmail();
     if (result) {
-      onClose();
+      setVerificationResent(true);
+      // Ẩn message sau 5 giây
+      setTimeout(() => setVerificationResent(false), 5000);
     }
   };
 
@@ -80,11 +96,49 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onClose }) => {
         {isLoginView ? t('loginTitle') : t('signupTitle')}
       </Text>
 
-      {/* Hiển thị lỗi */}
-      {(error || localError) && <Text style={styles.errorText}>{t(localError || error || '')}</Text>}
+      {/* Hiển thị verification message */}
+      {showVerificationMessage ? (
+        <View style={styles.verificationContainer}>
+          <Text style={styles.verificationTitle}>{t('verificationEmailSent')}</Text>
+          <Text style={styles.verificationText}>{t('verificationEmailSentDesc')}</Text>
+          <Text style={styles.verificationText}>{t('checkEmailAndLogin')}</Text>
 
-      {/* Form */}
-      <View style={styles.formContainer}>
+          {verificationResent && (
+            <Text style={styles.successText}>{t('verificationEmailResent')}</Text>
+          )}
+
+          <TouchableOpacity
+            style={styles.resendButton}
+            onPress={handleResendVerification}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#2563EB" size="small" />
+            ) : (
+              <Text style={styles.resendButtonText}>{t('resendVerificationEmail')}</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => {
+              setShowVerificationMessage(false);
+              setIsLoginView(true);
+              setEmail('');
+              setPassword('');
+              setConfirmPassword('');
+            }}
+          >
+            <Text style={styles.backButtonText}>{t('askLogin')}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <>
+          {/* Hiển thị lỗi */}
+          {(error || localError) && <Text style={styles.errorText}>{t(localError || error || '')}</Text>}
+
+          {/* Form */}
+          <View style={styles.formContainer}>
         {/* Input cho Email */}
         <View style={styles.inputContainer}>
           <Text style={styles.label}>{t('email')}</Text>
@@ -136,18 +190,20 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onClose }) => {
         </TouchableOpacity>
       </View>
 
-      {/* Nút chuyển đổi giữa Login/Signup */}
-      <View style={styles.switchButtonContainer}>
-        <TouchableOpacity onPress={() => {
-          setIsLoginView(!isLoginView);
-          setConfirmPassword(''); // Reset confirm password khi chuyển đổi
-          setLocalError(''); // Reset local error
-        }}>
-          <Text style={styles.switchButtonText}>
-            {isLoginView ? t('askSignup') : t('askLogin')}
-          </Text>
-        </TouchableOpacity>
-      </View>
+          {/* Nút chuyển đổi giữa Login/Signup */}
+          <View style={styles.switchButtonContainer}>
+            <TouchableOpacity onPress={() => {
+              setIsLoginView(!isLoginView);
+              setConfirmPassword(''); // Reset confirm password khi chuyển đổi
+              setLocalError(''); // Reset local error
+            }}>
+              <Text style={styles.switchButtonText}>
+                {isLoginView ? t('askSignup') : t('askLogin')}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
     </View>
   );
 };
@@ -231,6 +287,63 @@ const styles = StyleSheet.create({
   switchButtonText: {
     fontSize: 14,
     color: '#2563EB',
+    textDecorationLine: 'underline',
+  },
+  verificationContainer: {
+    width: '100%',
+    padding: 16,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  verificationTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1E40AF',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  verificationText: {
+    fontSize: 14,
+    color: '#1E40AF',
+    marginBottom: 8,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  successText: {
+    fontSize: 14,
+    color: '#059669',
+    fontWeight: '600',
+    marginTop: 8,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  resendButton: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#2563EB',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 16,
+    minHeight: 48,
+  },
+  resendButtonText: {
+    color: '#2563EB',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  backButton: {
+    width: '100%',
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  backButtonText: {
+    color: '#2563EB',
+    fontSize: 14,
     textDecorationLine: 'underline',
   },
 });
