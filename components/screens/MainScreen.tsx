@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
+  Alert,
   Linking,
   ScrollView,
   StyleSheet,
@@ -13,6 +14,8 @@ import {
   View
 } from 'react-native';
 import { CameraIcon, DocumentIcon, MapPinIcon, SearchIcon, TrashIcon } from '../icons/Icons';
+import { useSubscription } from '../../context/SubscriptionContext';
+import AIGarbageScanner from './AIGarbageScanner';
 
 // --- ĐỊNH NGHĨA TYPESCRIPT ---
 
@@ -86,8 +89,9 @@ interface ISearchResult {
 
 const MainScreen: React.FC<MainScreenProps> = ({ location, onLocationReset, appState }) => {
   const { t, i18n } = useTranslation();
+  const { subscription } = useSubscription();
   const { rules, status, error, districtId } = appState;
-  
+
   // Gán kiểu cho rules để an toàn
   const typedRules = rules as IRulesData;
   const wasteCategories = typedRules?.waste_categories;
@@ -95,6 +99,7 @@ const MainScreen: React.FC<MainScreenProps> = ({ location, onLocationReset, appS
 
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [showAIScanner, setShowAIScanner] = useState<boolean>(false);
 
   const categories = useMemo<string[]>(() => {
     if (!wasteCategories) return [];
@@ -209,10 +214,40 @@ const MainScreen: React.FC<MainScreenProps> = ({ location, onLocationReset, appS
 
   const handleOpenPDF = () => {
     if (sourceDocument?.pdf_url) {
-      Linking.openURL(sourceDocument.pdf_url).catch(err => 
+      Linking.openURL(sourceDocument.pdf_url).catch(err =>
         console.error('Error opening PDF:', err)
       );
     }
+  };
+
+  const handleOpenAIScanner = () => {
+    // Check subscription
+    if (!subscription || subscription.tier === 'FREE') {
+      Alert.alert(
+        t('premiumFeature', 'Premium Feature'),
+        t('aiScannerRequiresPremium', 'AI Garbage Scanner requires PRO or ULTRA subscription'),
+        [
+          { text: t('cancel', 'Cancel'), style: 'cancel' },
+          { text: t('upgrade', 'Upgrade'), onPress: () => {
+            // Navigate to premium tab
+            console.log('Navigate to premium');
+          }},
+        ]
+      );
+      return;
+    }
+
+    // Check if rules are loaded
+    if (!wasteCategories || Object.keys(wasteCategories).length === 0) {
+      Alert.alert(
+        t('noRulesAvailable', 'No Rules Available'),
+        t('pleaseSelectLocation', 'Please select a location with garbage rules first')
+      );
+      return;
+    }
+
+    // Open AI Scanner
+    setShowAIScanner(true);
   };
 
   if (status === 'loading') {
@@ -242,9 +277,18 @@ const MainScreen: React.FC<MainScreenProps> = ({ location, onLocationReset, appS
       {/* Main Actions */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>{t('whatToThrow')}</Text>
-        <TouchableOpacity style={styles.cameraButton}>
+        <TouchableOpacity
+          style={[
+            styles.cameraButton,
+            (!subscription || subscription.tier === 'FREE') && styles.cameraButtonDisabled
+          ]}
+          onPress={handleOpenAIScanner}
+        >
           <CameraIcon color="#FFFFFF" />
-          <Text style={styles.cameraButtonText}>{t('takePicture')}</Text>
+          <Text style={styles.cameraButtonText}>
+            {t('aiGarbageScanner', 'AI Garbage Scanner')}
+            {(!subscription || subscription.tier === 'FREE') && ' 🔒'}
+          </Text>
         </TouchableOpacity>
         <View style={styles.searchRow}>
           <TextInput
@@ -398,6 +442,13 @@ const MainScreen: React.FC<MainScreenProps> = ({ location, onLocationReset, appS
         )}
       </View>
 
+      {/* AI Garbage Scanner Modal */}
+      <AIGarbageScanner
+        visible={showAIScanner}
+        onClose={() => setShowAIScanner(false)}
+        wasteCategories={wasteCategories}
+        districtId={districtId}
+      />
     </ScrollView>
   );
 };
@@ -485,8 +536,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  searchRow: { 
-    flexDirection: 'row' 
+  cameraButtonDisabled: {
+    backgroundColor: '#9CA3AF',
+    opacity: 0.7,
+  },
+  searchRow: {
+    flexDirection: 'row'
   },
   searchInput: {
     flex: 1,
