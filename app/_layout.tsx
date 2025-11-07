@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 import 'react-native-reanimated';
 import { AuthProvider } from '../context/AuthContext';
 import { LocationProvider } from '../context/LocationContext';
+import { SubscriptionProvider } from '../context/SubscriptionContext';
 import '../i18n';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -16,12 +17,14 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <LocationProvider>
-        <Stack>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-        </Stack>
-      </LocationProvider>
+      <SubscriptionProvider>
+        <LocationProvider>
+          <Stack>
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+          </Stack>
+        </LocationProvider>
+      </SubscriptionProvider>
     </AuthProvider>
   );
 }

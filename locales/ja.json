@@ -161,13 +161,31 @@
   "authErrorInvalidCredential": "メールアドレスまたはパスワードが間違っています。",
   "authErrorWeakPassword": "パスワードは6文字以上である必要があります。",
   "authErrorPasswordMismatch": "パスワードが一致しません。",
-  "authErrorEmailNotVerified": "ログインする前にメールアドレスを確認してください。",
   "authErrorTooManyRequests": "リクエストが多すぎます。しばらくしてからもう一度お試しください。",
   "authErrorUnknown": "エラーが発生しました。もう一度お試しください。",
 
-  "verificationEmailSent": "確認メールを送信しました！",
-  "verificationEmailSentDesc": "受信トレイを確認し、確認リンクをクリックして登録を完了してください。",
-  "verificationEmailResent": "確認メールを再送信しました！",
-  "resendVerificationEmail": "確認メールを再送信",
-  "checkEmailAndLogin": "確認後、ログインできます。"
+  "subscriptionFree": "無料",
+  "subscriptionPro": "PRO",
+  "subscriptionUltra": "ULTRA",
+  "subscriptionTitle": "プランを選択",
+  "subscriptionSubtitle": "アップグレードして強力なAI機能を利用",
+  "currentPlan": "現在のプラン",
+  "perMonth": "/月",
+  "choosePlan": "このプランを選択",
+  "subscribed": "契約中",
+  "popular": "人気",
+
+  "featureGarbageRules": "ゴミ分別ルール",
+  "featureBasicSearch": "基本検索",
+  "featureLanguageSupport": "3言語対応",
+  "featureAIGarbageRecognition": "AIゴミ認識",
+  "featureAIImageTranslation": "日本語書類翻訳",
+  "featureSubsidyNotifications": "助成金通知",
+  "featureAdFree": "広告なし",
+  "featurePrioritySupport": "優先サポート",
+
+  "subscriptionSuccess": "サブスクリプション成功！",
+  "subscriptionSuccessDesc": "{tier}プランにアップグレードしました",
+  "subscriptionError": "サブスクリプションエラー",
+  "subscriptionErrorDesc": "アップグレードに失敗しました。もう一度お試しください。"
 }
