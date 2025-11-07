@@ -151,13 +151,31 @@
   "authErrorInvalidCredential": "Sai email hoặc mật khẩu.",
   "authErrorWeakPassword": "Mật khẩu phải có ít nhất 6 ký tự.",
   "authErrorPasswordMismatch": "Mật khẩu nhập lại không khớp.",
-  "authErrorEmailNotVerified": "Vui lòng xác thực email trước khi đăng nhập.",
   "authErrorTooManyRequests": "Quá nhiều yêu cầu. Vui lòng thử lại sau.",
   "authErrorUnknown": "Đã xảy ra lỗi. Vui lòng thử lại.",
 
-  "verificationEmailSent": "Email xác thực đã được gửi!",
-  "verificationEmailSentDesc": "Vui lòng kiểm tra hộp thư của bạn và nhấp vào link xác thực để hoàn tất đăng ký.",
-  "verificationEmailResent": "Email xác thực đã được gửi lại!",
-  "resendVerificationEmail": "Gửi lại email xác thực",
-  "checkEmailAndLogin": "Sau khi xác thực, bạn có thể đăng nhập."
+  "subscriptionFree": "Miễn phí",
+  "subscriptionPro": "PRO",
+  "subscriptionUltra": "ULTRA",
+  "subscriptionTitle": "Chọn gói đăng ký",
+  "subscriptionSubtitle": "Nâng cấp để mở khóa tính năng AI mạnh mẽ",
+  "currentPlan": "Gói hiện tại",
+  "perMonth": "/tháng",
+  "choosePlan": "Chọn gói này",
+  "subscribed": "Đã đăng ký",
+  "popular": "Phổ biến",
+
+  "featureGarbageRules": "Quy tắc phân loại rác",
+  "featureBasicSearch": "Tìm kiếm cơ bản",
+  "featureLanguageSupport": "Hỗ trợ 3 ngôn ngữ",
+  "featureAIGarbageRecognition": "Nhận diện rác thông minh bằng AI",
+  "featureAIImageTranslation": "Dịch ảnh tài liệu tiếng Nhật",
+  "featureSubsidyNotifications": "Thông báo trợ cấp chính phủ",
+  "featureAdFree": "Không quảng cáo",
+  "featurePrioritySupport": "Hỗ trợ ưu tiên",
+
+  "subscriptionSuccess": "Đăng ký thành công!",
+  "subscriptionSuccessDesc": "Bạn đã nâng cấp lên gói {tier}",
+  "subscriptionError": "Lỗi đăng ký",
+  "subscriptionErrorDesc": "Không thể nâng cấp gói. Vui lòng thử lại."
 }
