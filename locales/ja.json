@@ -148,16 +148,18 @@
     "errorRuleNotFound": "Lỗi: Không tìm thấy quy tắc đổ rác (ja)",
     "loginTitle": "Đăng nhập",
   "signupTitle": "Đăng ký",
-  "email": "Email",
-  "password": "Mật khẩu",
-  "login": "Đăng nhập",
-  "signup": "Đăng ký",
-  "askSignup": "Chưa có tài khoản? Đăng ký ngay",
-  "askLogin": "Đã có tài khoản? Đăng nhập",
-  
-  "authErrorEmailInUse": "Địa chỉ email này đã được sử dụng.",
-  "authErrorInvalidEmail": "Địa chỉ email không hợp lệ.",
-  "authErrorInvalidCredential": "Sai email hoặc mật khẩu.",
-  "authErrorWeakPassword": "Mật khẩu phải có ít nhất 6 ký tự.",
-  "authErrorUnknown": "Đã xảy ra lỗi. Vui lòng thử lại."
+  "email": "メールアドレス",
+  "password": "パスワード",
+  "confirmPassword": "パスワード（確認）",
+  "login": "ログイン",
+  "signup": "新規登録",
+  "askSignup": "アカウントをお持ちでない方はこちら",
+  "askLogin": "アカウントをお持ちの方はこちら",
+
+  "authErrorEmailInUse": "このメールアドレスは既に使用されています。",
+  "authErrorInvalidEmail": "メールアドレスが無効です。",
+  "authErrorInvalidCredential": "メールアドレスまたはパスワードが間違っています。",
+  "authErrorWeakPassword": "パスワードは6文字以上である必要があります。",
+  "authErrorPasswordMismatch": "パスワードが一致しません。",
+  "authErrorUnknown": "エラーが発生しました。もう一度お試しください。"
 }
