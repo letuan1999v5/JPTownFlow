@@ -151,5 +151,13 @@
   "authErrorInvalidCredential": "Sai email hoặc mật khẩu.",
   "authErrorWeakPassword": "Mật khẩu phải có ít nhất 6 ký tự.",
   "authErrorPasswordMismatch": "Mật khẩu nhập lại không khớp.",
-  "authErrorUnknown": "Đã xảy ra lỗi. Vui lòng thử lại."
+  "authErrorEmailNotVerified": "Vui lòng xác thực email trước khi đăng nhập.",
+  "authErrorTooManyRequests": "Quá nhiều yêu cầu. Vui lòng thử lại sau.",
+  "authErrorUnknown": "Đã xảy ra lỗi. Vui lòng thử lại.",
+
+  "verificationEmailSent": "Email xác thực đã được gửi!",
+  "verificationEmailSentDesc": "Vui lòng kiểm tra hộp thư của bạn và nhấp vào link xác thực để hoàn tất đăng ký.",
+  "verificationEmailResent": "Email xác thực đã được gửi lại!",
+  "resendVerificationEmail": "Gửi lại email xác thực",
+  "checkEmailAndLogin": "Sau khi xác thực, bạn có thể đăng nhập."
 }

@@ -4,9 +4,11 @@ import {
     User,
     createUserWithEmailAndPassword,
     onAuthStateChanged,
+    sendEmailVerification,
     signInWithEmailAndPassword,
     signOut
 } from 'firebase/auth';
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import React, {
     ReactNode,
     createContext,
@@ -14,7 +16,7 @@ import React, {
     useEffect,
     useState
 } from 'react';
-import { auth } from '../firebase/firebaseConfig'; // Import 'auth' từ file config
+import { auth, db } from '../firebase/firebaseConfig'; // Import 'auth' và 'db' từ file config
 
 // Định nghĩa kiểu cho các giá trị context
 interface AuthContextType {
@@ -24,6 +26,7 @@ interface AuthContextType {
   signup: (email: string, password: string) => Promise<boolean>;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
+  resendVerificationEmail: () => Promise<boolean>;
 }
 
 // Tạo Context
@@ -42,6 +45,10 @@ const mapAuthError = (errorCode: string): string => {
       return 'authErrorInvalidCredential';
     case 'auth/weak-password':
       return 'authErrorWeakPassword';
+    case 'auth/email-not-verified':
+      return 'authErrorEmailNotVerified';
+    case 'auth/too-many-requests':
+      return 'authErrorTooManyRequests';
     default:
       return 'authErrorUnknown';
   }
@@ -69,7 +76,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setLoading(true); // Bắt đầu loading (cho nút)
     setError(null);
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
+      // Tạo user với email và password
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      // Gửi email verification
+      await sendEmailVerification(user);
+
+      // Lưu user data vào Firestore
+      await setDoc(doc(db, 'users', user.uid), {
+        email: user.email,
+        emailVerified: false,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
       setLoading(false); // Dừng loading
       return true; // Thành công
     } catch (e: any) {
@@ -83,7 +104,30 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setLoading(true); // Bắt đầu loading (cho nút)
     setError(null);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      // Kiểm tra email đã được xác thực chưa
+      if (!user.emailVerified) {
+        // Đăng xuất user nếu chưa verify email
+        await signOut(auth);
+        setError('authErrorEmailNotVerified');
+        setLoading(false);
+        return false;
+      }
+
+      // Cập nhật Firestore nếu cần
+      const userDocRef = doc(db, 'users', user.uid);
+      const userDoc = await getDoc(userDocRef);
+
+      if (userDoc.exists() && !userDoc.data().emailVerified) {
+        // Cập nhật trạng thái emailVerified trong Firestore
+        await setDoc(userDocRef, {
+          emailVerified: true,
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+      }
+
       setLoading(false); // Dừng loading
       return true; // Thành công
     } catch (e: any) {
@@ -105,6 +149,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  const resendVerificationEmail = async (): Promise<boolean> => {
+    setLoading(true);
+    setError(null);
+    try {
+      if (auth.currentUser) {
+        await sendEmailVerification(auth.currentUser);
+        setLoading(false);
+        return true;
+      }
+      setError('authErrorUnknown');
+      setLoading(false);
+      return false;
+    } catch (e: any) {
+      setError(mapAuthError(e.code));
+      setLoading(false);
+      return false;
+    }
+  };
+
   const value = {
     user,
     loading, // loading này chỉ active khi user nhấn login/signup
@@ -112,6 +175,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     signup,
     login,
     logout,
+    resendVerificationEmail,
   };
 
   // SỬA: Render {children} ngay lập tức.

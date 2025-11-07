@@ -161,5 +161,13 @@
   "authErrorInvalidCredential": "Incorrect email or password.",
   "authErrorWeakPassword": "Password must be at least 6 characters.",
   "authErrorPasswordMismatch": "Passwords do not match.",
-  "authErrorUnknown": "An error occurred. Please try again."
+  "authErrorEmailNotVerified": "Please verify your email before logging in.",
+  "authErrorTooManyRequests": "Too many requests. Please try again later.",
+  "authErrorUnknown": "An error occurred. Please try again.",
+
+  "verificationEmailSent": "Verification email sent!",
+  "verificationEmailSentDesc": "Please check your inbox and click the verification link to complete registration.",
+  "verificationEmailResent": "Verification email resent!",
+  "resendVerificationEmail": "Resend verification email",
+  "checkEmailAndLogin": "After verification, you can login."
 }
