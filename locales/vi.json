@@ -140,14 +140,16 @@
   "signupTitle": "Đăng ký",
   "email": "Email",
   "password": "Mật khẩu",
+  "confirmPassword": "Nhập lại mật khẩu",
   "login": "Đăng nhập",
   "signup": "Đăng ký",
   "askSignup": "Chưa có tài khoản? Đăng ký ngay",
   "askLogin": "Đã có tài khoản? Đăng nhập",
-  
+
   "authErrorEmailInUse": "Địa chỉ email này đã được sử dụng.",
   "authErrorInvalidEmail": "Địa chỉ email không hợp lệ.",
   "authErrorInvalidCredential": "Sai email hoặc mật khẩu.",
   "authErrorWeakPassword": "Mật khẩu phải có ít nhất 6 ký tự.",
+  "authErrorPasswordMismatch": "Mật khẩu nhập lại không khớp.",
   "authErrorUnknown": "Đã xảy ra lỗi. Vui lòng thử lại."
 }

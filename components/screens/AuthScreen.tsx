@@ -37,16 +37,27 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onClose }) => {
   // SỬA: Thêm kiểu (string) cho useState
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
+  const [confirmPassword, setConfirmPassword] = useState<string>('');
   // SỬA: Thêm kiểu (boolean) cho useState
   const [loading, setLoading] = useState<boolean>(false);
+  const [localError, setLocalError] = useState<string>('');
   
   // SỬA: Ép kiểu cho hook (hoặc bạn có thể sửa file useAuth.js thành .ts)
   const { signup, login, error } = useAuth();
 
   const handleSubmit = async (): Promise<void> => {
+    // Reset local error
+    setLocalError('');
+
+    // Validate confirm password for signup
+    if (!isLoginView && password !== confirmPassword) {
+      setLocalError('authErrorPasswordMismatch');
+      return;
+    }
+
     setLoading(true);
     let result: any; // Chúng ta chỉ quan tâm nó truthy/falsy
-    
+
     if (isLoginView) {
       result = await login(email, password);
     } else {
@@ -70,7 +81,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onClose }) => {
       </Text>
 
       {/* Hiển thị lỗi */}
-      {error && <Text style={styles.errorText}>{t(error)}</Text>}
+      {(error || localError) && <Text style={styles.errorText}>{t(localError || error || '')}</Text>}
 
       {/* Form */}
       <View style={styles.formContainer}>
@@ -100,6 +111,19 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onClose }) => {
           />
         </View>
 
+        {/* Input cho Confirm Password - chỉ hiển thị khi đăng ký */}
+        {!isLoginView && (
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>{t('confirmPassword')}</Text>
+            <TextInput
+              style={styles.input}
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry // Ẩn mật khẩu
+            />
+          </View>
+        )}
+
         {/* Nút Submit */}
         <TouchableOpacity style={styles.submitButton} onPress={handleSubmit} disabled={loading}>
           {loading ? (
@@ -114,7 +138,11 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onClose }) => {
 
       {/* Nút chuyển đổi giữa Login/Signup */}
       <View style={styles.switchButtonContainer}>
-        <TouchableOpacity onPress={() => setIsLoginView(!isLoginView)}>
+        <TouchableOpacity onPress={() => {
+          setIsLoginView(!isLoginView);
+          setConfirmPassword(''); // Reset confirm password khi chuyển đổi
+          setLocalError(''); // Reset local error
+        }}>
           <Text style={styles.switchButtonText}>
             {isLoginView ? t('askSignup') : t('askLogin')}
           </Text>

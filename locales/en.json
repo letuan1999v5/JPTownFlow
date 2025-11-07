@@ -149,15 +149,17 @@
     "loginTitle": "Đăng nhập",
   "signupTitle": "Đăng ký",
   "email": "Email",
-  "password": "Mật khẩu",
-  "login": "Đăng nhập",
-  "signup": "Đăng ký",
-  "askSignup": "Chưa có tài khoản? Đăng ký ngay",
-  "askLogin": "Đã có tài khoản? Đăng nhập",
-  
-  "authErrorEmailInUse": "Địa chỉ email này đã được sử dụng.",
-  "authErrorInvalidEmail": "Địa chỉ email không hợp lệ.",
-  "authErrorInvalidCredential": "Sai email hoặc mật khẩu.",
-  "authErrorWeakPassword": "Mật khẩu phải có ít nhất 6 ký tự.",
-  "authErrorUnknown": "Đã xảy ra lỗi. Vui lòng thử lại."
+  "password": "Password",
+  "confirmPassword": "Confirm Password",
+  "login": "Login",
+  "signup": "Sign Up",
+  "askSignup": "Don't have an account? Sign up now",
+  "askLogin": "Already have an account? Login",
+
+  "authErrorEmailInUse": "This email address is already in use.",
+  "authErrorInvalidEmail": "Invalid email address.",
+  "authErrorInvalidCredential": "Incorrect email or password.",
+  "authErrorWeakPassword": "Password must be at least 6 characters.",
+  "authErrorPasswordMismatch": "Passwords do not match.",
+  "authErrorUnknown": "An error occurred. Please try again."
 }
