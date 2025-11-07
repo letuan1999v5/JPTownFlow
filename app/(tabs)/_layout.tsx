@@ -1,33 +1,46 @@
-import { Tabs } from 'expo-router';
-import React from 'react';
+// app/(tabs)/_layout.tsx
 
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Tabs } from 'expo-router';
+import { BookOpen, Home, Settings, Zap } from 'lucide-react-native';
+import React from 'react';
+import { useTranslation } from 'react-i18next'; // <-- 1. Import hook
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  const { t } = useTranslation(); // <-- 2. Lấy hàm t()
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        headerShown: false,
-        tabBarButton: HapticTab,
+        tabBarActiveTintColor: '#2563EB',
+        headerShown: false 
       }}>
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          // --- 3. Dùng t() để dịch title ---
+          title: t('garbageRulesTab', 'Quy tắc rác'), // Thêm key 'garbageRulesTab' vào file locales
+          tabBarIcon: ({ color }) => <Home size={28} color={color} />,
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="guides"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: t('guidesTab', 'Hướng dẫn'), // Thêm key 'guidesTab'
+          tabBarIcon: ({ color }) => <BookOpen size={28} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="premium"
+        options={{
+          title: t('premiumTab', 'AI Premium'), // Thêm key 'premiumTab'
+          tabBarIcon: ({ color }) => <Zap size={28} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: t('settingsTab', 'Cài đặt'), // Thêm key 'settingsTab'
+          tabBarIcon: ({ color }) => <Settings size={28} color={color} />,
         }}
       />
     </Tabs>

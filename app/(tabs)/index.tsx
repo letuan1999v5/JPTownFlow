@@ -1,98 +1,279 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+// app/(tabs)/index.tsx
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  collection,
+  documentId as fsDocumentId,
+  getDocs,
+  query,
+  where
+} from 'firebase/firestore';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+
+import MainScreen from '../../components/screens/MainScreen';
+import WelcomeScreen from '../../components/screens/WelcomeScreen';
+import { TARGET_COLLECTION } from '../../config';
+import { useLocation } from '../../context/LocationContext';
+import { db } from '../../firebase/firebaseConfig';
+
+const RULES_STORAGE_KEY = '@garbageRulesData_';
+// SỬA: Key này giờ sẽ lưu một object chứa 3 giá trị
+const LOCATION_STORAGE_KEY = '@userSelectedLocation_v2'; // Đổi tên key để tránh xung đột cache cũ
+
+interface IAppState {
+  status: 'loading' | 'ready' | 'error' | 'idle';
+  statusCount: number;
+  error: string | null;
+  rules: any;
+  districtId: string | null; // SỬA: Thêm districtId vào appState
+}
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const { locationString, compositeId, setLocationContext } = useLocation();
+  const [districtId, setDistrictId] = useState<string | null>(null); // SỬA: Thêm state cho District ID
+  
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [appState, setAppState] = useState<IAppState>({
+    status: 'loading',
+    statusCount: 0,
+    error: null,
+    rules: {},
+    districtId: null, // SỬA: Khởi tạo
+  });
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  // Logic tải dữ liệu đã lưu khi khởi động
+  useEffect(() => {
+    const loadSavedData = async () => {
+      setIsInitialLoading(true);
+      try {
+        const savedLocationJson = await AsyncStorage.getItem(LOCATION_STORAGE_KEY);
+        
+        if (savedLocationJson) {
+          // SỬA: Đọc cả 3 giá trị
+          const { 
+            locationString: savedLocationStr, 
+            compositeId: savedCompositeId, 
+            districtId: savedDistrictId 
+          } = JSON.parse(savedLocationJson);
+          
+          if (savedLocationStr && savedCompositeId && savedDistrictId) {
+            const savedRulesJson = await AsyncStorage.getItem(RULES_STORAGE_KEY + savedCompositeId);
+            if (savedRulesJson) {
+              const savedRules = JSON.parse(savedRulesJson);
+              setLocationContext(savedLocationStr, savedCompositeId); 
+              setDistrictId(savedDistrictId);
+              setDistrictId(savedDistrictId); // SỬA: Set districtId
+              setAppState({
+                status: 'ready',
+                statusCount: Object.keys(savedRules.waste_categories || {}).length,
+                error: null,
+                rules: savedRules,
+                districtId: savedDistrictId, // SỬA: Set districtId
+              });
+            } else {
+              // Có location nhưng không có rules, kích hoạt tải lại
+              setLocationContext(savedLocationStr, savedCompositeId);
+              setDistrictId(savedDistrictId);
+              setDistrictId(savedDistrictId); // SỬA: Set districtId
+            }
+          } else {
+            setAppState(prev => ({ ...prev, status: 'idle' }));
+          }
+        } else {
+          setAppState(prev => ({ ...prev, status: 'idle' }));
+        }
+      } catch (e) {
+        console.error("Lỗi tải dữ liệu đã lưu:", e);
+        await AsyncStorage.clear();
+        setLocationContext(null, null);
+        setAppState(prev => ({ ...prev, status: 'idle' }));
+      } finally {
+        setIsInitialLoading(false);
+      }
+    };
+    loadSavedData();
+  }, [setLocationContext]);
+
+  // Logic tải rules TỰ ĐỘNG (Không đổi, vì nó tải rules của cả thành phố)
+  useEffect(() => {
+    if (isInitialLoading || !compositeId) {
+      return;
+    }
+
+    const fetchRules = async (documentId: string) => {
+      console.log(`Đang tải rules cho: ${documentId} (sử dụng getDocs)`);
+      setAppState(prev => ({ 
+        ...prev, 
+        status: 'loading', 
+        error: null, 
+        rules: {},
+        districtId: districtId, // Giữ districtId
+      }));
+
+      try {
+        const cachedRulesJson = await AsyncStorage.getItem(RULES_STORAGE_KEY + documentId);
+        if (cachedRulesJson) {
+          const rulesData = JSON.parse(cachedRulesJson);
+          setAppState({
+            status: 'ready',
+            statusCount: Object.keys(rulesData.waste_categories || {}).length,
+            error: null,
+            rules: rulesData,
+            districtId: districtId, // Giữ districtId
+          });
+          console.log("Tải rules từ cache thành công!");
+          return;
+        }
+        
+        console.log("Cache không có, tải từ Firestore...");
+        
+        const q = query(
+          collection(db, TARGET_COLLECTION), 
+          where(fsDocumentId(), "==", documentId)
+        );
+        const querySnap = await getDocs(q);
+
+        if (!querySnap.empty) {
+          const rulesData = querySnap.docs[0].data();
+          
+          if (rulesData.waste_categories) { 
+            await AsyncStorage.setItem(RULES_STORAGE_KEY + documentId, JSON.stringify(rulesData));
+            setAppState({
+              status: 'ready',
+              statusCount: Object.keys(rulesData.waste_categories || {}).length,
+              error: null,
+              rules: rulesData,
+              districtId: districtId, // Giữ districtId
+            });
+            console.log("Tải và lưu rules (Firestore) thành công!");
+          } else {
+            throw new Error("errorInvalidRules"); 
+          }
+        } else {
+          throw new Error(`errorRuleNotFound`); 
+        }
+      } catch (err: any) {
+        console.error("Lỗi tải hoặc lưu rules:", err);
+        setAppState(prev => ({
+          ...prev,
+          status: 'error',
+          error: err.message || 'errorUnknown', 
+          rules: {},
+          districtId: districtId, // Giữ districtId
+        }));
+      }
+    };
+
+    fetchRules(compositeId);
+    
+  }, [compositeId, isInitialLoading]); 
+
+  // SỬA: handleLocationSelect (nhận 3 tham số)
+  const handleLocationSelect = async (
+    newLocationString: string, 
+    newCompositeId: string | null, 
+    newDistrictId: string | null // SỬA: Thêm tham số
+  ) => {
+    if (!newCompositeId || !newLocationString || !newDistrictId) { // SỬA: Kiểm tra cả 3
+      console.error("Lỗi: handleLocationSelect thiếu ID hoặc Tên hoặc Khu vực.");
+      setAppState(prev => ({ 
+        ...prev, 
+        status: 'error', 
+        error: 'errorLocationSelect',
+        rules: {},
+        districtId: null,
+      }));
+      return;
+    }
+
+    try {
+      const locationData = JSON.stringify({
+        locationString: newLocationString,
+        compositeId: newCompositeId,
+        districtId: newDistrictId,
+      });
+      await AsyncStorage.setItem(LOCATION_STORAGE_KEY, locationData);
+      
+      setLocationContext(newLocationString, newCompositeId);
+      setDistrictId(newDistrictId);
+      setDistrictId(newDistrictId); // SỬA: Set state
+      
+    } catch (e) {
+      console.error("Lỗi lưu location mới:", e);
+      setAppState(prev => ({ 
+        ...prev, 
+        status: 'error', 
+        error: 'errorSavingLocation', 
+        rules: {},
+        districtId: null,
+      }));
+    }
+  };
+
+
+  // SỬA: Cập nhật handleLocationReset
+  const handleLocationReset = async () => {
+    try {
+      if (compositeId) {
+         await AsyncStorage.removeItem(RULES_STORAGE_KEY + compositeId);
+      }
+      await AsyncStorage.removeItem(LOCATION_STORAGE_KEY);
+      
+      setLocationContext(null, null); 
+      setDistrictId(null);
+      setDistrictId(null); // SỬA: Reset
+      
+      setAppState({
+          status: 'idle', statusCount: 0, error: null, rules: {}, districtId: null,
+      });
+      console.log("Đã xóa dữ liệu location và rules đã lưu.");
+    } catch (e) {
+      console.error("Lỗi xóa dữ liệu đã lưu:", e);
+    }
+  };
+
+  const handleLoginClick = () => {
+    console.log("Nút Đăng nhập đã được nhấn!");
+  };
+
+  if (isInitialLoading) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" />
+        <Text>Đang tải ứng dụng...</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      {/* SỬA: Kiểm tra cả 3 state */}
+      {locationString && compositeId && districtId ? (
+        <MainScreen
+          location={locationString}
+          onLocationReset={handleLocationReset}
+          appState={appState} // appState giờ đã chứa districtId
+        />
+      ) : (
+        <WelcomeScreen
+          appState={appState}
+          onLocationSelect={handleLocationSelect}
+          onLoginClick={handleLoginClick}
+        />
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  centered: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
   },
 });

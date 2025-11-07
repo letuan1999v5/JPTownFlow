@@ -1,0 +1,1 @@
+start: npx expo start --dev-client --clear --localhost
