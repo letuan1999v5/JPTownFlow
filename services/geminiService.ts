@@ -147,3 +147,178 @@ export function getCategoryDetails(
 ): any {
   return wasteCategories?.[category] || null;
 }
+
+// ============================================
+// AI ASSISTANT FEATURES
+// ============================================
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+/**
+ * General AI Chat Assistant
+ */
+export async function chatWithAI(
+  messages: ChatMessage[],
+  language: string = 'en'
+): Promise<string> {
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+    // Build conversation history
+    const history = messages.slice(0, -1).map(msg => ({
+      role: msg.role === 'user' ? 'user' : 'model',
+      parts: [{ text: msg.content }],
+    }));
+
+    const chat = model.startChat({ history });
+    const lastMessage = messages[messages.length - 1].content;
+
+    const result = await chat.sendMessage(lastMessage);
+    const response = await result.response;
+    return response.text();
+  } catch (error) {
+    console.error('Gemini Chat API error:', error);
+    throw new Error('Failed to get AI response. Please try again.');
+  }
+}
+
+/**
+ * Japanese Learning AI Assistant with JLPT level support
+ */
+export async function chatJapaneseLearning(
+  messages: ChatMessage[],
+  jlptLevel: 'N1' | 'N2' | 'N3' | 'N4' | 'N5',
+  userLanguage: string = 'en'
+): Promise<string> {
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+    // System prompt based on JLPT level
+    const systemPrompt = `You are a Japanese language teacher helping a student at JLPT ${jlptLevel} level.
+
+IMPORTANT RULES:
+1. Use Japanese vocabulary and grammar appropriate for ${jlptLevel} level
+2. When you use vocabulary or grammar ABOVE ${jlptLevel} level, you MUST add a translation in [${userLanguage}] immediately after it
+3. Format: 難しい単語 [difficult word in ${userLanguage}]
+4. Be encouraging and patient
+5. Provide examples and explanations when needed
+6. Respond primarily in Japanese, but explain complex concepts in ${userLanguage} if needed
+
+Example response format:
+"こんにちは！今日は天気がいいですね。
+新しい語彙を勉強しましょう:
+- 憧れる [to admire/long for in ${userLanguage}] - This is N2 level
+- 一生懸命 [with all one's might in ${userLanguage}] - This is N3 level"`;
+
+    // Build conversation with system prompt
+    const history = [
+      {
+        role: 'user',
+        parts: [{ text: systemPrompt }],
+      },
+      {
+        role: 'model',
+        parts: [{ text: 'はい、分かりました。${jlptLevel}レベルで教えます！' }],
+      },
+      ...messages.slice(0, -1).map(msg => ({
+        role: msg.role === 'user' ? 'user' : 'model',
+        parts: [{ text: msg.content }],
+      })),
+    ];
+
+    const chat = model.startChat({ history });
+    const lastMessage = messages[messages.length - 1].content;
+
+    const result = await chat.sendMessage(lastMessage);
+    const response = await result.response;
+    return response.text();
+  } catch (error) {
+    console.error('Gemini Japanese Learning API error:', error);
+    throw new Error('Failed to get AI response. Please try again.');
+  }
+}
+
+/**
+ * Summarize web page content
+ */
+export async function summarizeWebContent(
+  htmlContent: string,
+  language: string = 'en'
+): Promise<string> {
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+    const languageMap: { [key: string]: string } = {
+      en: 'English',
+      ja: 'Japanese',
+      vi: 'Vietnamese',
+      zh: 'Chinese',
+      ko: 'Korean',
+      pt: 'Portuguese',
+      es: 'Spanish',
+      fil: 'Filipino',
+      th: 'Thai',
+      id: 'Indonesian',
+    };
+
+    const targetLanguage = languageMap[language] || 'English';
+
+    const prompt = `Please summarize the following web page content in ${targetLanguage}.
+Provide a concise summary of the main points (3-5 bullet points).
+
+Web content:
+${htmlContent.substring(0, 10000)}...`; // Limit content to avoid token limits
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    return response.text();
+  } catch (error) {
+    console.error('Gemini Web Summary API error:', error);
+    throw new Error('Failed to summarize content. Please try again.');
+  }
+}
+
+/**
+ * Answer question about web page content
+ */
+export async function askAboutWebContent(
+  htmlContent: string,
+  question: string,
+  language: string = 'en'
+): Promise<string> {
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+    const languageMap: { [key: string]: string } = {
+      en: 'English',
+      ja: 'Japanese',
+      vi: 'Vietnamese',
+      zh: 'Chinese',
+      ko: 'Korean',
+      pt: 'Portuguese',
+      es: 'Spanish',
+      fil: 'Filipino',
+      th: 'Thai',
+      id: 'Indonesian',
+    };
+
+    const targetLanguage = languageMap[language] || 'English';
+
+    const prompt = `Based on the following web page content, please answer this question in ${targetLanguage}:
+
+Question: ${question}
+
+Web content:
+${htmlContent.substring(0, 10000)}...`;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    return response.text();
+  } catch (error) {
+    console.error('Gemini Web Q&A API error:', error);
+    throw new Error('Failed to answer question. Please try again.');
+  }
+}
