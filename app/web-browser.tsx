@@ -118,6 +118,23 @@ export default function WebBrowserScreen() {
     setUrl('https://www.google.com');
   };
 
+  // Handle navigation requests - prevent opening external browser
+  const handleShouldStartLoadWithRequest = (request: any) => {
+    const { url: requestUrl } = request;
+
+    // Check if it's a PDF file
+    if (requestUrl.toLowerCase().endsWith('.pdf') || requestUrl.toLowerCase().includes('.pdf?')) {
+      // Use Google Docs Viewer for PDF files
+      const viewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(requestUrl)}`;
+      setCurrentUrl(viewerUrl);
+      setUrl(requestUrl); // Keep original URL in address bar
+      return false; // Prevent default navigation
+    }
+
+    // Allow all other navigations within WebView
+    return true;
+  };
+
   // Fetch page content from WebView with Promise
   const fetchPageContent = (): Promise<string> => {
     return new Promise((resolve) => {
@@ -331,8 +348,14 @@ export default function WebBrowserScreen() {
             setUrl(navState.url);
           }}
           onMessage={handleWebViewMessage}
+          onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
           javaScriptEnabled={true}
           domStorageEnabled={true}
+          allowFileAccess={true}
+          allowFileAccessFromFileURLs={true}
+          allowUniversalAccessFromFileURLs={true}
+          mixedContentMode="always"
+          originWhitelist={['*']}
         />
         {loading && (
           <View style={styles.loadingOverlay}>
