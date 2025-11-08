@@ -1,7 +1,7 @@
 // app/(tabs)/settings.tsx - UPDATED với Auth & Profile
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator } from 'react-native';
 import LanguageSwitcher from '../../components/common/LanguageSwitcher';
 import { UserIcon } from '../../components/icons/Icons';
 import { useAuth } from '../../context/AuthContext';
@@ -9,6 +9,7 @@ import { seedGuides } from '../../scripts/seedGuides';
 import { useRouter } from 'expo-router';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebase/firebaseConfig';
+import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 
 export default function SettingsScreen() {
   const { t } = useTranslation();
@@ -16,6 +17,10 @@ export default function SettingsScreen() {
   const router = useRouter();
   const [seeding, setSeeding] = useState(false);
   const [fixingRole, setFixingRole] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
 
   // Check if user is admin or superadmin
   const isAdmin = role === 'admin' || role === 'superadmin';
@@ -61,6 +66,57 @@ export default function SettingsScreen() {
       setFixingRole(false);
       console.error('Error fixing role:', error);
       Alert.alert('Error', `Failed to update role: ${error}`);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!user) return;
+
+    // Validate inputs
+    if (!currentPassword || !newPassword || !confirmNewPassword) {
+      Alert.alert(t('error'), t('fillAllFields'));
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      Alert.alert(t('error'), t('authErrorPasswordMismatch'));
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      Alert.alert(t('error'), t('authErrorWeakPassword'));
+      return;
+    }
+
+    try {
+      setChangingPassword(true);
+
+      // Re-authenticate user before changing password
+      const credential = EmailAuthProvider.credential(
+        user.email!,
+        currentPassword
+      );
+      await reauthenticateWithCredential(user, credential);
+
+      // Update password
+      await updatePassword(user, newPassword);
+
+      // Reset form
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+      setChangingPassword(false);
+
+      Alert.alert(t('success'), t('passwordChangedSuccess'));
+    } catch (error: any) {
+      setChangingPassword(false);
+      console.error('Change password error:', error);
+
+      if (error.code === 'auth/wrong-password') {
+        Alert.alert(t('error'), t('wrongCurrentPassword'));
+      } else {
+        Alert.alert(t('error'), t('passwordChangeError'));
+      }
     }
   };
 
@@ -153,6 +209,59 @@ export default function SettingsScreen() {
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
                 <Text style={styles.fixRoleButtonText}>🔧 Fix Role Now</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* Change Password Section - Only for logged in users */}
+      {user && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('changePassword', 'Change Password')}</Text>
+          <View style={styles.passwordCard}>
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>{t('currentPassword', 'Current Password')}</Text>
+              <TextInput
+                style={styles.input}
+                value={currentPassword}
+                onChangeText={setCurrentPassword}
+                secureTextEntry
+                placeholder="••••••••"
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>{t('newPassword', 'New Password')}</Text>
+              <TextInput
+                style={styles.input}
+                value={newPassword}
+                onChangeText={setNewPassword}
+                secureTextEntry
+                placeholder="••••••••"
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>{t('confirmPassword', 'Confirm New Password')}</Text>
+              <TextInput
+                style={styles.input}
+                value={confirmNewPassword}
+                onChangeText={setConfirmNewPassword}
+                secureTextEntry
+                placeholder="••••••••"
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.changePasswordButton, changingPassword && styles.changePasswordButtonDisabled]}
+              onPress={handleChangePassword}
+              disabled={changingPassword}
+            >
+              {changingPassword ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.changePasswordButtonText}>{t('changePassword', 'Change Password')}</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -315,6 +424,48 @@ const styles = StyleSheet.create({
     backgroundColor: '#9CA3AF',
   },
   fixRoleButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+
+  // Password Change Card
+  passwordCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  inputContainer: {
+    marginBottom: 16,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+    marginBottom: 6,
+  },
+  input: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    backgroundColor: '#FFFFFF',
+  },
+  changePasswordButton: {
+    backgroundColor: '#2563EB',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  changePasswordButtonDisabled: {
+    backgroundColor: '#9CA3AF',
+  },
+  changePasswordButtonText: {
     color: '#FFFFFF',
     fontWeight: '600',
     fontSize: 16,

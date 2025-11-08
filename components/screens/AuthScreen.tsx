@@ -4,6 +4,7 @@ import React, { useState } from 'react'; // SỬA: Import React
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
+  Alert,
   StyleSheet,
   Text,
   TextInput,
@@ -12,6 +13,8 @@ import {
 } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import { XIcon } from '../icons/Icons';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { auth } from '../../firebase/firebaseConfig';
 
 // --- ĐỊNH NGHĨA TYPESCRIPT ---
 
@@ -67,6 +70,25 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onClose }) => {
 
     if (result) {
       onClose(); // Đóng modal và đăng nhập tự động
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email) {
+      Alert.alert(t('error'), t('enterEmailFirst'));
+      return;
+    }
+
+    try {
+      await sendPasswordResetEmail(auth, email);
+      Alert.alert(
+        t('success'),
+        t('passwordResetEmailSent'),
+        [{ text: t('ok') }]
+      );
+    } catch (error: any) {
+      console.error('Password reset error:', error);
+      Alert.alert(t('error'), t('passwordResetError'));
     }
   };
 
@@ -134,6 +156,13 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onClose }) => {
             </Text>
           )}
         </TouchableOpacity>
+
+        {/* Forgot Password Link - only show in login view */}
+        {isLoginView && (
+          <TouchableOpacity onPress={handleForgotPassword} style={styles.forgotPasswordButton}>
+            <Text style={styles.forgotPasswordText}>{t('forgotPassword')}</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Nút chuyển đổi giữa Login/Signup */}
@@ -223,6 +252,15 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '600',
     fontSize: 16,
+  },
+  forgotPasswordButton: {
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  forgotPasswordText: {
+    fontSize: 14,
+    color: '#6B7280',
+    textDecorationLine: 'underline',
   },
   switchButtonContainer: {
     alignItems: 'center',
