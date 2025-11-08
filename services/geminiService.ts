@@ -362,12 +362,27 @@ export async function askAboutWebContent(
 
     const targetLanguage = languageMap[language] || 'English';
 
-    const prompt = `Based on the following web page content, please answer this question in ${targetLanguage}:
+    const prompt = `You are a helpful AI assistant. Based on the web page content below, answer the user's question.
 
-Question: ${question}
+CRITICAL INSTRUCTION - LANGUAGE DETECTION:
+1. First, detect the language of the user's question
+2. ALWAYS respond in THE SAME LANGUAGE as the question, regardless of the targetLanguage parameter
+3. If the question is in Vietnamese, respond in Vietnamese
+4. If the question is in English, respond in English
+5. If the question is in Japanese, respond in Japanese
+6. And so on for other languages
 
-Web content:
-${htmlContent.substring(0, 10000)}...`;
+Examples:
+- Question: "Trang web này nói về gì?" → Answer in Vietnamese
+- Question: "What is this page about?" → Answer in English
+- Question: "このページは何についてですか？" → Answer in Japanese
+
+User's question: ${question}
+
+Web page content:
+${htmlContent.substring(0, 10000)}...
+
+Remember: Respond in the SAME LANGUAGE as the question above.`;
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
