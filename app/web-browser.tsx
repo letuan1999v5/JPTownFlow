@@ -1,5 +1,5 @@
 // app/web-browser.tsx
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   View,
@@ -8,154 +8,191 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Modal,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
-  Alert,
+  Animated,
+  Dimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
-import { ArrowLeft, ExternalLink, Sparkles, MessageCircle } from 'lucide-react-native';
-import { summarizeWebContent, askAboutWebContent } from '../services/geminiService';
+import { WebView } from 'react-native-webview';
+import {
+  ArrowLeft,
+  Send,
+  ChevronDown,
+  ChevronUp,
+  RefreshCw,
+  Home
+} from 'lucide-react-native';
+import { askAboutWebContent } from '../services/geminiService';
 import { useAuth } from '../context/AuthContext';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const CHAT_MIN_HEIGHT = SCREEN_HEIGHT * 0.15; // 15%
+const CHAT_MAX_HEIGHT = SCREEN_HEIGHT * 0.5;  // 50%
+const WEBVIEW_HEADER_HEIGHT = 100;
+
+interface Message {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
 
 export default function WebBrowserScreen() {
   const { t, i18n } = useTranslation();
   const router = useRouter();
   const { user, subscription } = useAuth();
+  const webViewRef = useRef<WebView>(null);
 
   // Check subscription status
   const hasSubscription = subscription === 'PRO' || subscription === 'ULTRA';
 
-  const [url, setUrl] = useState('');
+  // URL and WebView states
+  const [url, setUrl] = useState('https://www.google.com');
+  const [currentUrl, setCurrentUrl] = useState('https://www.google.com');
+  const [canGoBack, setCanGoBack] = useState(false);
+  const [canGoForward, setCanGoForward] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  // Chat states
+  const [chatExpanded, setChatExpanded] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      role: 'system',
+      content: t('aiBrowserWelcome', 'Browse the web and ask me anything about the page you\'re viewing!'),
+    },
+  ]);
+  const [inputText, setInputText] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
   const [pageContent, setPageContent] = useState('');
-  const [fetchingContent, setFetchingContent] = useState(false);
 
-  const [showSummaryModal, setShowSummaryModal] = useState(false);
-  const [summary, setSummary] = useState('');
-  const [summarizing, setSummarizing] = useState(false);
+  // Animation for chat panel
+  const chatHeight = useRef(new Animated.Value(CHAT_MIN_HEIGHT)).current;
 
-  const [showQAModal, setShowQAModal] = useState(false);
-  const [question, setQuestion] = useState('');
-  const [answer, setAnswer] = useState('');
-  const [answering, setAnswering] = useState(false);
+  const toggleChatExpand = () => {
+    const toValue = chatExpanded ? CHAT_MIN_HEIGHT : CHAT_MAX_HEIGHT;
+    Animated.spring(chatHeight, {
+      toValue,
+      useNativeDriver: false,
+      tension: 100,
+      friction: 10,
+    }).start();
+    setChatExpanded(!chatExpanded);
+  };
 
-  const handleOpenUrl = async () => {
-    if (!url.trim()) {
-      Alert.alert(t('error', 'Error'), t('pleaseEnterUrl', 'Please enter a URL'));
-      return;
-    }
-
+  const handleNavigate = () => {
     let finalUrl = url.trim();
-
-    // Add https:// if no protocol
     if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
-      // Check if it's a search query or URL
       if (finalUrl.includes(' ') || !finalUrl.includes('.')) {
-        // It's a search query
         finalUrl = `https://www.google.com/search?q=${encodeURIComponent(finalUrl)}`;
       } else {
-        // It's a URL without protocol
         finalUrl = `https://${finalUrl}`;
       }
     }
-
-    // Open in browser
-    await WebBrowser.openBrowserAsync(finalUrl);
+    setCurrentUrl(finalUrl);
+    setUrl(finalUrl);
   };
 
-  const handleFetchContent = async () => {
-    if (!url.trim()) {
-      Alert.alert(t('error', 'Error'), t('pleaseEnterUrl', 'Please enter a URL'));
-      return;
+  const handleGoBack = () => {
+    if (webViewRef.current && canGoBack) {
+      webViewRef.current.goBack();
+    }
+  };
+
+  const handleGoForward = () => {
+    if (webViewRef.current && canGoForward) {
+      webViewRef.current.goForward();
+    }
+  };
+
+  const handleRefresh = () => {
+    if (webViewRef.current) {
+      webViewRef.current.reload();
+    }
+  };
+
+  const handleGoHome = () => {
+    setCurrentUrl('https://www.google.com');
+    setUrl('https://www.google.com');
+  };
+
+  // Fetch page content from WebView
+  const fetchPageContent = async () => {
+    if (webViewRef.current) {
+      // Inject JavaScript to get page text content
+      const script = `
+        (function() {
+          return document.body.innerText || document.body.textContent;
+        })();
+      `;
+
+      webViewRef.current.injectJavaScript(script);
+    }
+  };
+
+  // Handle message from WebView
+  const handleWebViewMessage = (event: any) => {
+    const content = event.nativeEvent.data;
+    if (content) {
+      setPageContent(content.substring(0, 15000));
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!inputText.trim() || aiLoading) return;
+
+    const userMessage: Message = {
+      role: 'user',
+      content: inputText.trim(),
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setInputText('');
+    setAiLoading(true);
+
+    // Expand chat to show conversation
+    if (!chatExpanded) {
+      toggleChatExpand();
     }
 
-    let finalUrl = url.trim();
-    if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
-      if (!finalUrl.includes(' ') && finalUrl.includes('.')) {
-        finalUrl = `https://${finalUrl}`;
-      } else {
-        Alert.alert(t('error', 'Error'), t('invalidUrl', 'Please enter a valid URL'));
-        return;
+    try {
+      // Fetch page content if not already fetched
+      if (!pageContent) {
+        // Inject script to get page content
+        const script = `
+          (function() {
+            const text = document.body.innerText || document.body.textContent;
+            window.ReactNativeWebView.postMessage(text);
+            return text;
+          })();
+        `;
+        webViewRef.current?.injectJavaScript(script);
+
+        // Wait a bit for content to be fetched
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
-    }
 
-    setFetchingContent(true);
-
-    try {
-      const response = await fetch(finalUrl);
-      const html = await response.text();
-
-      // Extract text from HTML (simple approach)
-      const textContent = html
-        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-        .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-      setPageContent(textContent.substring(0, 15000));
-      Alert.alert(
-        t('success', 'Success'),
-        t('contentFetched', 'Content fetched! You can now summarize or ask questions.')
+      // Get AI response
+      const response = await askAboutWebContent(
+        pageContent || 'No content available',
+        userMessage.content,
+        i18n.language
       );
+
+      const assistantMessage: Message = {
+        role: 'assistant',
+        content: response,
+      };
+
+      setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
-      console.error('Fetch error:', error);
-      Alert.alert(
-        t('error', 'Error'),
-        t('fetchError', 'Failed to fetch content. The website may not allow access.')
-      );
+      console.error('AI response error:', error);
+      const errorMessage: Message = {
+        role: 'assistant',
+        content: t('aiError', 'Sorry, I encountered an error. Please try again.'),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
     } finally {
-      setFetchingContent(false);
-    }
-  };
-
-  const handleSummarize = async () => {
-    if (!pageContent) {
-      Alert.alert(
-        t('error', 'Error'),
-        t('noContentToSummarize', 'No content available. Please fetch content first.')
-      );
-      return;
-    }
-
-    setShowSummaryModal(true);
-    setSummarizing(true);
-    setSummary('');
-
-    try {
-      const result = await summarizeWebContent(pageContent, i18n.language);
-      setSummary(result);
-    } catch (error) {
-      setSummary(t('summaryError', 'Failed to generate summary. Please try again.'));
-    } finally {
-      setSummarizing(false);
-    }
-  };
-
-  const handleAskQuestion = async () => {
-    if (!pageContent) {
-      Alert.alert(
-        t('error', 'Error'),
-        t('noContentToAsk', 'No content available. Please fetch content first.')
-      );
-      return;
-    }
-
-    if (!question.trim()) {
-      Alert.alert(t('error', 'Error'), t('pleaseEnterQuestion', 'Please enter a question.'));
-      return;
-    }
-
-    setAnswering(true);
-    setAnswer('');
-
-    try {
-      const result = await askAboutWebContent(pageContent, question, i18n.language);
-      setAnswer(result);
-    } catch (error) {
-      setAnswer(t('answerError', 'Failed to get answer. Please try again.'));
-    } finally {
-      setAnswering(false);
+      setAiLoading(false);
     }
   };
 
@@ -195,186 +232,152 @@ export default function WebBrowserScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <ArrowLeft size={24} color="#1F2937" />
-        </TouchableOpacity>
-        <View style={styles.headerContent}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      {/* Header with URL Bar */}
+      <View style={styles.webViewHeader}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.iconButton}>
+            <ArrowLeft size={20} color="#1F2937" />
+          </TouchableOpacity>
           <Text style={styles.headerTitle}>{t('aiBrowserTitle', 'AI Browser')}</Text>
         </View>
-      </View>
 
-      <ScrollView style={styles.content}>
-        {/* URL Input Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('enterUrl', 'Enter URL or search...')}</Text>
+        <View style={styles.urlBar}>
           <TextInput
             style={styles.urlInput}
             value={url}
             onChangeText={setUrl}
-            placeholder="https://example.com"
+            onSubmitEditing={handleNavigate}
+            placeholder="Enter URL or search..."
             autoCapitalize="none"
             autoCorrect={false}
+            returnKeyType="go"
           />
-
-          <View style={styles.actionButtons}>
-            <TouchableOpacity style={styles.openButton} onPress={handleOpenUrl}>
-              <ExternalLink size={20} color="#FFFFFF" />
-              <Text style={styles.openButtonText}>{t('openInBrowser', 'Open in Browser')}</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.fetchButton, fetchingContent && styles.fetchButtonDisabled]}
-              onPress={handleFetchContent}
-              disabled={fetchingContent}
-            >
-              {fetchingContent ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
-              ) : (
-                <>
-                  <Text style={styles.fetchButtonText}>{t('fetchContent', 'Fetch Content')}</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
         </View>
 
-        {/* Content Status */}
-        {pageContent && (
-          <View style={styles.statusCard}>
-            <Text style={styles.statusTitle}>✓ {t('contentReady', 'Content Ready')}</Text>
-            <Text style={styles.statusText}>
-              {t('contentLength', 'Content length')}: {pageContent.length} {t('characters', 'characters')}
+        <View style={styles.navButtons}>
+          <TouchableOpacity
+            onPress={handleGoBack}
+            style={[styles.navButton, !canGoBack && styles.navButtonDisabled]}
+            disabled={!canGoBack}
+          >
+            <ArrowLeft size={18} color={canGoBack ? "#2563EB" : "#D1D5DB"} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleGoForward}
+            style={[styles.navButton, !canGoForward && styles.navButtonDisabled]}
+            disabled={!canGoForward}
+          >
+            <ArrowLeft size={18} color={canGoForward ? "#2563EB" : "#D1D5DB"} style={{ transform: [{ rotate: '180deg' }] }} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleRefresh} style={styles.navButton}>
+            <RefreshCw size={18} color="#2563EB" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleGoHome} style={styles.navButton}>
+            <Home size={18} color="#2563EB" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* WebView */}
+      <View style={styles.webViewContainer}>
+        <WebView
+          ref={webViewRef}
+          source={{ uri: currentUrl }}
+          style={styles.webView}
+          onLoadStart={() => setLoading(true)}
+          onLoadEnd={() => setLoading(false)}
+          onNavigationStateChange={(navState) => {
+            setCanGoBack(navState.canGoBack);
+            setCanGoForward(navState.canGoForward);
+            setUrl(navState.url);
+          }}
+          onMessage={handleWebViewMessage}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+        />
+        {loading && (
+          <View style={styles.loadingOverlay}>
+            <ActivityIndicator size="large" color="#2563EB" />
+          </View>
+        )}
+      </View>
+
+      {/* AI Chat Panel */}
+      <Animated.View style={[styles.chatPanel, { height: chatHeight }]}>
+        {/* Chat Header */}
+        <TouchableOpacity style={styles.chatHeader} onPress={toggleChatExpand}>
+          <View style={styles.chatHeaderContent}>
+            <Text style={styles.chatHeaderTitle}>
+              💬 {t('askAI', 'Ask AI about this page')}
+            </Text>
+            <Text style={styles.chatHeaderHint}>
+              {t('aiBrowserHint', 'Tap here to expand')}
             </Text>
           </View>
-        )}
+          {chatExpanded ? (
+            <ChevronDown size={24} color="#6B7280" />
+          ) : (
+            <ChevronUp size={24} color="#6B7280" />
+          )}
+        </TouchableOpacity>
 
-        {/* AI Actions */}
-        {pageContent && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t('aiActions', 'AI Actions')}</Text>
-
-            <TouchableOpacity style={styles.aiActionCard} onPress={handleSummarize}>
-              <Sparkles size={32} color="#F59E0B" />
-              <View style={styles.aiActionContent}>
-                <Text style={styles.aiActionTitle}>{t('summarize', 'Summarize')}</Text>
-                <Text style={styles.aiActionDesc}>
-                  {t('summarizeDesc', 'Get AI summary of this page')}
+        {/* Messages (only visible when expanded) */}
+        {chatExpanded && (
+          <ScrollView
+            style={styles.messagesContainer}
+            contentContainerStyle={styles.messagesContent}
+          >
+            {messages.map((message, index) => (
+              <View
+                key={index}
+                style={[
+                  styles.messageBubble,
+                  message.role === 'user' ? styles.userBubble : styles.assistantBubble,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.messageText,
+                    message.role === 'user' ? styles.userText : styles.assistantText,
+                  ]}
+                >
+                  {message.content}
                 </Text>
               </View>
-              <Text style={styles.aiActionArrow}>→</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.aiActionCard} onPress={() => setShowQAModal(true)}>
-              <MessageCircle size={32} color="#2563EB" />
-              <View style={styles.aiActionContent}>
-                <Text style={styles.aiActionTitle}>{t('askQuestion', 'Ask Question')}</Text>
-                <Text style={styles.aiActionDesc}>
-                  {t('askDesc', 'Ask AI about this page')}
-                </Text>
+            ))}
+            {aiLoading && (
+              <View style={styles.loadingBubble}>
+                <ActivityIndicator size="small" color="#6B7280" />
               </View>
-              <Text style={styles.aiActionArrow}>→</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Instructions */}
-        <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>ℹ️ {t('howToUse', 'How to Use')}</Text>
-          <Text style={styles.infoText}>
-            {t(
-              'browserInstructions',
-              '1. Enter a URL\n2. Click "Open in Browser" to view the page\n3. Click "Fetch Content" to enable AI features\n4. Use AI to summarize or ask questions about the page'
             )}
-          </Text>
+          </ScrollView>
+        )}
+
+        {/* Input */}
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.input}
+            value={inputText}
+            onChangeText={setInputText}
+            placeholder={t('typeQuestion', 'Ask about this page...')}
+            multiline
+            maxLength={500}
+            editable={!aiLoading}
+          />
+          <TouchableOpacity
+            style={[styles.sendButton, (!inputText.trim() || aiLoading) && styles.sendButtonDisabled]}
+            onPress={handleSendMessage}
+            disabled={!inputText.trim() || aiLoading}
+          >
+            <Send size={20} color="#FFFFFF" />
+          </TouchableOpacity>
         </View>
-      </ScrollView>
-
-      {/* Summary Modal */}
-      <Modal
-        visible={showSummaryModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowSummaryModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{t('pageSummary', 'Page Summary')}</Text>
-            <ScrollView style={styles.modalBody}>
-              {summarizing ? (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="large" color="#2563EB" />
-                  <Text style={styles.loadingText}>{t('generating', 'Generating summary...')}</Text>
-                </View>
-              ) : (
-                <Text style={styles.summaryText}>{summary}</Text>
-              )}
-            </ScrollView>
-            <TouchableOpacity
-              style={styles.modalCloseButton}
-              onPress={() => setShowSummaryModal(false)}
-            >
-              <Text style={styles.modalCloseButtonText}>{t('close', 'Close')}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Q&A Modal */}
-      <Modal
-        visible={showQAModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowQAModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{t('askAboutPage', 'Ask About This Page')}</Text>
-
-            <TextInput
-              style={styles.questionInput}
-              value={question}
-              onChangeText={setQuestion}
-              placeholder={t('typeQuestion', 'Type your question...')}
-              multiline
-              maxLength={500}
-            />
-
-            <TouchableOpacity
-              style={[styles.askButton, answering && styles.askButtonDisabled]}
-              onPress={handleAskQuestion}
-              disabled={answering}
-            >
-              {answering ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.askButtonText}>{t('getAnswer', 'Get Answer')}</Text>
-              )}
-            </TouchableOpacity>
-
-            {answer ? (
-              <ScrollView style={styles.answerContainer}>
-                <Text style={styles.answerLabel}>{t('answer', 'Answer')}:</Text>
-                <Text style={styles.answerText}>{answer}</Text>
-              </ScrollView>
-            ) : null}
-
-            <TouchableOpacity
-              style={styles.modalCloseButton}
-              onPress={() => {
-                setShowQAModal(false);
-                setQuestion('');
-                setAnswer('');
-              }}
-            >
-              <Text style={styles.modalCloseButtonText}>{t('close', 'Close')}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-    </View>
+      </Animated.View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -383,233 +386,161 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F9FAFB',
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    paddingTop: 48,
+  webViewHeader: {
     backgroundColor: '#FFFFFF',
+    paddingTop: 48,
+    paddingHorizontal: 12,
+    paddingBottom: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
-  backButton: {
-    marginRight: 12,
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
   },
-  headerContent: {
-    flex: 1,
+  iconButton: {
+    padding: 8,
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#1F2937',
+    marginLeft: 8,
   },
-  content: {
-    flex: 1,
-  },
-  section: {
-    padding: 20,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 12,
+  urlBar: {
+    marginBottom: 8,
   },
   urlInput: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 15,
-    backgroundColor: '#FFFFFF',
-    marginBottom: 12,
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  openButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#2563EB',
-    paddingVertical: 12,
-    borderRadius: 12,
-  },
-  openButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 15,
-  },
-  fetchButton: {
-    flex: 1,
-    backgroundColor: '#10B981',
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  fetchButtonDisabled: {
-    backgroundColor: '#9CA3AF',
-  },
-  fetchButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 15,
-  },
-  statusCard: {
-    marginHorizontal: 20,
-    marginBottom: 20,
-    padding: 16,
-    backgroundColor: '#F0FDF4',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#86EFAC',
-  },
-  statusTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#166534',
-    marginBottom: 4,
-  },
-  statusText: {
-    fontSize: 14,
-    color: '#166534',
-  },
-  aiActionCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    marginBottom: 12,
-    gap: 12,
-  },
-  aiActionContent: {
-    flex: 1,
-  },
-  aiActionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 4,
-  },
-  aiActionDesc: {
-    fontSize: 13,
-    color: '#6B7280',
-  },
-  aiActionArrow: {
-    fontSize: 24,
-    color: '#9CA3AF',
-    fontWeight: 'bold',
-  },
-  infoCard: {
-    margin: 20,
-    padding: 16,
-    backgroundColor: '#EFF6FF',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#93C5FD',
-  },
-  infoTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 8,
-  },
-  infoText: {
-    fontSize: 14,
-    color: '#4B5563',
-    lineHeight: 20,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    paddingBottom: 40,
-    maxHeight: '80%',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 16,
-  },
-  modalBody: {
-    maxHeight: 400,
-  },
-  loadingContainer: {
-    alignItems: 'center',
-    padding: 40,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  summaryText: {
-    fontSize: 15,
-    lineHeight: 24,
-    color: '#1F2937',
-  },
-  questionInput: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 15,
-    minHeight: 80,
-    marginBottom: 12,
-  },
-  askButton: {
-    backgroundColor: '#2563EB',
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  askButtonDisabled: {
-    backgroundColor: '#9CA3AF',
-  },
-  askButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 16,
-  },
-  answerContainer: {
-    maxHeight: 200,
-    marginBottom: 16,
-  },
-  answerLabel: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 8,
-  },
-  answerText: {
-    fontSize: 15,
-    lineHeight: 24,
-    color: '#374151',
-  },
-  modalCloseButton: {
-    padding: 16,
     backgroundColor: '#F3F4F6',
-    borderRadius: 12,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 14,
+    color: '#1F2937',
+  },
+  navButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    gap: 8,
+  },
+  navButton: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+  },
+  navButtonDisabled: {
+    opacity: 0.5,
+  },
+  webViewContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  webView: {
+    flex: 1,
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  modalCloseButtonText: {
-    fontSize: 16,
+  chatPanel: {
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 2,
+    borderTopColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  chatHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  chatHeaderContent: {
+    flex: 1,
+  },
+  chatHeaderTitle: {
+    fontSize: 14,
     fontWeight: '600',
-    color: '#6B7280',
+    color: '#1F2937',
+  },
+  chatHeaderHint: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 2,
+  },
+  messagesContainer: {
+    flex: 1,
+  },
+  messagesContent: {
+    padding: 12,
+    gap: 8,
+  },
+  messageBubble: {
+    maxWidth: '80%',
+    padding: 10,
+    borderRadius: 12,
+  },
+  userBubble: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#2563EB',
+  },
+  assistantBubble: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#F3F4F6',
+  },
+  messageText: {
+    fontSize: 14,
+    lineHeight: 18,
+  },
+  userText: {
+    color: '#FFFFFF',
+  },
+  assistantText: {
+    color: '#1F2937',
+  },
+  loadingBubble: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#F3F4F6',
+    padding: 10,
+    borderRadius: 12,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    padding: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    gap: 8,
+  },
+  input: {
+    flex: 1,
+    minHeight: 40,
+    maxHeight: 80,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    fontSize: 14,
+  },
+  sendButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#2563EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sendButtonDisabled: {
+    backgroundColor: '#9CA3AF',
   },
   subscriptionRequired: {
     flex: 1,
@@ -645,5 +576,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#FFFFFF',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    paddingTop: 48,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  backButton: {
+    marginRight: 12,
+  },
+  headerContent: {
+    flex: 1,
   },
 });
