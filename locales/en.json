@@ -219,5 +219,28 @@
 
   "cancel": "Cancel",
   "confirm": "Confirm",
-  "error": "Error"
+  "error": "Error",
+
+  "guides": "Guides",
+  "guidesSubtitle": "Life guides in Japan",
+  "all": "All",
+  "guideCategoryVisa": "Visa",
+  "guideCategoryMyNumber": "My Number",
+  "guideCategoryShopping": "Shopping",
+  "guideCategoryLifestyle": "Lifestyle",
+  "guideCategoryTransportation": "Transportation",
+  "guideCategoryTips": "Tips & Tricks",
+  "free": "Free",
+  "guideRequiresPremium": "This guide requires PRO or ULTRA subscription",
+  "noGuidesFound": "No guides found",
+  "errorLoadingGuides": "Error loading guides",
+  "errorLoadingGuide": "Error loading guide",
+  "guideNotFound": "Guide not found",
+  "back": "Back",
+  "lastUpdated": "Last updated",
+  "loading": "Loading",
+  "loginRequired": "Login Required",
+  "loginRequiredMessage": "Please login to subscribe",
+  "confirmSubscription": "Confirm Subscription",
+  "loginToSubscribe": "Login to Subscribe"
 }

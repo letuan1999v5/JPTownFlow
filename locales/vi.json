@@ -209,5 +209,28 @@
 
   "cancel": "Hủy",
   "confirm": "Xác nhận",
-  "error": "Lỗi"
+  "error": "Lỗi",
+
+  "guides": "Cẩm nang",
+  "guidesSubtitle": "Hướng dẫn cuộc sống tại Nhật Bản",
+  "all": "Tất cả",
+  "guideCategoryVisa": "Visa",
+  "guideCategoryMyNumber": "My Number",
+  "guideCategoryShopping": "Mua sắm",
+  "guideCategoryLifestyle": "Cuộc sống",
+  "guideCategoryTransportation": "Giao thông",
+  "guideCategoryTips": "Mẹo hay",
+  "free": "Miễn phí",
+  "guideRequiresPremium": "Bài viết này yêu cầu gói PRO hoặc ULTRA",
+  "noGuidesFound": "Không tìm thấy bài viết nào",
+  "errorLoadingGuides": "Lỗi khi tải bài viết",
+  "errorLoadingGuide": "Lỗi khi tải bài viết",
+  "guideNotFound": "Không tìm thấy bài viết",
+  "back": "Quay lại",
+  "lastUpdated": "Cập nhật lần cuối",
+  "loading": "Đang tải",
+  "loginRequired": "Yêu cầu đăng nhập",
+  "loginRequiredMessage": "Vui lòng đăng nhập để đăng ký gói",
+  "confirmSubscription": "Xác nhận đăng ký",
+  "loginToSubscribe": "Đăng nhập để đăng ký gói"
 }
