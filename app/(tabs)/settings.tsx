@@ -113,14 +113,14 @@ export default function SettingsScreen() {
       {user && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t('account', 'Account')}</Text>
-          
+
           <View style={styles.profileCard}>
             <View style={styles.profileHeader}>
               <UserIcon color="#2563EB" size={32} />
               <View style={styles.profileInfo}>
                 <Text style={styles.profileEmail}>{user.email}</Text>
                 <Text style={styles.profileStatus}>
-                  {t('freeAccount', 'Free Account')}
+                  Role: {role || 'No role'} | {t('freeAccount', 'Free Account')}
                 </Text>
               </View>
             </View>
