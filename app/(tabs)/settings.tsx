@@ -6,11 +6,17 @@ import LanguageSwitcher from '../../components/common/LanguageSwitcher';
 import { UserIcon } from '../../components/icons/Icons';
 import { useAuth } from '../../context/AuthContext';
 import { seedGuides } from '../../scripts/seedGuides';
+import { useRouter } from 'expo-router';
 
 export default function SettingsScreen() {
   const { t } = useTranslation();
-  const { user, logout } = useAuth();
+  const { user, role, logout } = useAuth();
+  const router = useRouter();
   const [seeding, setSeeding] = useState(false);
+
+  // Check if user is admin or superadmin
+  const isAdmin = role === 'admin' || role === 'superadmin';
+  const isSuperAdmin = role === 'superadmin';
 
   const handleLogout = async () => {
     Alert.alert(
@@ -31,9 +37,18 @@ export default function SettingsScreen() {
   };
 
   const handleSeedGuides = async () => {
+    // Check if user is admin or superadmin
+    if (!isAdmin) {
+      Alert.alert(
+        'Permission Denied',
+        'Only admins can seed guides. Contact a super admin to request admin access.'
+      );
+      return;
+    }
+
     Alert.alert(
       'Seed Sample Guides',
-      'This will add 4 sample guides to Firestore. Continue?',
+      'This will add/update 4 sample guides to Firestore. Existing guides will be updated, new ones will be created.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -47,7 +62,7 @@ export default function SettingsScreen() {
               if (success) {
                 Alert.alert(
                   'Success!',
-                  '4 sample guides have been added to Firestore. Go to the Guides tab to see them!'
+                  'Sample guides have been seeded/updated. Go to the Guides tab to see them!'
                 );
               } else {
                 Alert.alert('Error', 'Failed to seed guides. Check console for details.');
@@ -92,6 +107,24 @@ export default function SettingsScreen() {
         </View>
       )}
 
+      {/* Admin Panel Section - Only for super admin */}
+      {isSuperAdmin && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Super Admin</Text>
+          <TouchableOpacity
+            style={styles.adminPanelButton}
+            onPress={() => router.push('/admin')}
+          >
+            <Text style={styles.adminPanelIcon}>👑</Text>
+            <View style={styles.adminPanelTextContainer}>
+              <Text style={styles.adminPanelTitle}>Admin Panel</Text>
+              <Text style={styles.adminPanelDescription}>Manage user roles and permissions</Text>
+            </View>
+            <Text style={styles.adminPanelArrow}>→</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Language Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{t('language', 'Language')}</Text>
@@ -111,24 +144,26 @@ export default function SettingsScreen() {
         </View>
       </View>
 
-      {/* Developer Tools Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Developer Tools</Text>
-        <TouchableOpacity
-          style={[styles.seedButton, seeding && styles.seedButtonDisabled]}
-          onPress={handleSeedGuides}
-          disabled={seeding}
-        >
-          {seeding ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.seedButtonText}>📚 Seed Sample Guides</Text>
-          )}
-        </TouchableOpacity>
-        <Text style={styles.seedHint}>
-          Click to add 4 sample guides (2 FREE, 2 PREMIUM) to Firestore
-        </Text>
-      </View>
+      {/* Developer Tools Section - Only for admin and superadmin */}
+      {isAdmin && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Developer Tools (Admin)</Text>
+          <TouchableOpacity
+            style={[styles.seedButton, seeding && styles.seedButtonDisabled]}
+            onPress={handleSeedGuides}
+            disabled={seeding}
+          >
+            {seeding ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.seedButtonText}>📚 Seed Sample Guides</Text>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.seedHint}>
+            Add/update 4 sample guides in Firestore (2 FREE, 2 PREMIUM)
+          </Text>
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -197,7 +232,40 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 16,
   },
-  
+
+  // Admin Panel
+  adminPanelButton: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 2,
+    borderColor: '#DC2626',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  adminPanelIcon: {
+    fontSize: 32,
+  },
+  adminPanelTextContainer: {
+    flex: 1,
+  },
+  adminPanelTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#DC2626',
+    marginBottom: 2,
+  },
+  adminPanelDescription: {
+    fontSize: 13,
+    color: '#6B7280',
+  },
+  adminPanelArrow: {
+    fontSize: 24,
+    color: '#DC2626',
+    fontWeight: 'bold',
+  },
+
   // Info Rows
   infoRow: {
     backgroundColor: '#FFFFFF',
