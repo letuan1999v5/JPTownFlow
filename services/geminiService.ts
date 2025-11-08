@@ -24,7 +24,7 @@ export async function analyzeGarbageImage(
 ): Promise<GarbageAnalysisResult> {
   try {
     // Get the generative model
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
 
     // Build categories context for AI
     const categoriesContext = Object.keys(wasteCategories || {})
@@ -165,7 +165,7 @@ export async function chatWithAI(
   language: string = 'en'
 ): Promise<string> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
 
     // Build conversation history
     const history = messages.slice(0, -1).map(msg => ({
@@ -194,7 +194,7 @@ export async function chatJapaneseLearning(
   userLanguage: string = 'en'
 ): Promise<string> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
 
     // System prompt based on JLPT level
     const systemPrompt = `You are a Japanese language teacher helping a student at JLPT ${jlptLevel} level.
@@ -249,7 +249,7 @@ export async function summarizeWebContent(
   language: string = 'en'
 ): Promise<string> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
 
     const languageMap: { [key: string]: string } = {
       en: 'English',
@@ -290,7 +290,7 @@ export async function askAboutWebContent(
   language: string = 'en'
 ): Promise<string> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
 
     const languageMap: { [key: string]: string } = {
       en: 'English',
