@@ -13,15 +13,6 @@ export default function MoreScreen() {
 
   const menuItems = [
     {
-      id: 'settings',
-      icon: '⚙️',
-      title: t('settingsTab', 'Settings'),
-      description: t('settingsDescription', 'App settings and preferences'),
-      route: '/settings-detail',
-      color: '#6B7280',
-      requireAuth: false,
-    },
-    {
       id: 'vocabularyNotebooks',
       icon: '📚',
       title: t('vocabularyNotebooks', 'Vocabulary Notebooks'),
