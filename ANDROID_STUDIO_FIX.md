@@ -10,20 +10,20 @@ Attempting to call JS function on a bad application bundle: AppRegistry.runAppli
 
 ### Bước 1: Dọn dẹp Metro Bundler Cache
 
-Mở Terminal trong thư mục project và chạy:
+Mở PowerShell trong thư mục project và chạy:
 
-```bash
-# Xóa cache của Metro Bundler
-rmdir /s /q node_modules\.cache
-rmdir /s /q .expo
-rmdir /s /q %TEMP%\metro-*
-rmdir /s /q %TEMP%\haste-map-*
+```powershell
+# Xóa cache của Metro Bundler (PowerShell)
+Remove-Item -Recurse -Force node_modules\.cache -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force .expo -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force $env:TEMP\metro-* -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force $env:TEMP\haste-map-* -ErrorAction SilentlyContinue
 
-# Hoặc trên Linux/Mac:
-rm -rf node_modules/.cache
-rm -rf .expo
-rm -rf /tmp/metro-*
-rm -rf /tmp/haste-map-*
+# Hoặc trên Linux/Mac (Terminal):
+# rm -rf node_modules/.cache
+# rm -rf .expo
+# rm -rf /tmp/metro-*
+# rm -rf /tmp/haste-map-*
 ```
 
 ### Bước 2: Dọn dẹp Android Build Cache
@@ -35,22 +35,22 @@ Có 2 cách:
 2. Menu: **Build** → **Rebuild Project**
 3. Menu: **File** → **Invalidate Caches...** → Chọn **Invalidate and Restart**
 
-**Cách 2: Dùng Terminal**
-```bash
+**Cách 2: Dùng PowerShell**
+```powershell
 cd android
-gradlew clean
+.\gradlew clean
 cd ..
 ```
 
 ### Bước 3: Khởi động lại Metro Bundler
 
-```bash
+```powershell
 # Khởi động Metro với cache đã xóa
 npx react-native start --reset-cache
 ```
 
 Hoặc nếu dùng Expo:
-```bash
+```powershell
 npx expo start --clear
 ```
 
@@ -65,9 +65,9 @@ npx expo start --clear
 **Xóa app hoàn toàn:**
 1. Xóa app khỏi thiết bị/emulator
 2. Xóa build folder:
-```bash
-rmdir /s /q android\app\build
-rmdir /s /q android\build
+```powershell
+Remove-Item -Recurse -Force android\app\build -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force android\build -ErrorAction SilentlyContinue
 ```
 
 3. Build lại từ đầu trong Android Studio
