@@ -12,13 +12,14 @@ import {
   KeyboardAvoidingView,
   Platform,
   Modal,
+  Alert,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { ArrowLeft, Send, Settings } from 'lucide-react-native';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { ArrowLeft, Send, Settings, Star, List } from 'lucide-react-native';
 import { chatJapaneseLearning, ChatMessage } from '../services/geminiService';
 import TranslatableText from '../components/common/TranslatableText';
 import { useAuth } from '../context/AuthContext';
-import { doc, setDoc, getDoc, Timestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, Timestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig';
 
 type JLPTLevel = 'N1' | 'N2' | 'N3' | 'N4' | 'N5';
@@ -26,14 +27,19 @@ type JLPTLevel = 'N1' | 'N2' | 'N3' | 'N4' | 'N5';
 export default function JapaneseLearningScreen() {
   const { t, i18n } = useTranslation();
   const router = useRouter();
+  const { chatId } = useLocalSearchParams();
   const { user, subscription } = useAuth();
   const scrollViewRef = useRef<ScrollView>(null);
 
   // Check subscription status
   const hasSubscription = subscription === 'PRO' || subscription === 'ULTRA';
 
+  const [currentChatId, setCurrentChatId] = useState<string | null>(
+    typeof chatId === 'string' ? chatId : null
+  );
   const [jlptLevel, setJlptLevel] = useState<JLPTLevel>('N5');
   const [showLevelModal, setShowLevelModal] = useState(false);
+  const [isImportant, setIsImportant] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
@@ -69,25 +75,34 @@ export default function JapaneseLearningScreen() {
 
   // Load chat history from Firestore
   const loadChatHistory = async () => {
-    if (!user) return;
+    if (!user || !currentChatId) return;
 
     try {
-      const chatDocRef = doc(db, 'japaneseLearningChats', user.uid);
+      const chatDocRef = doc(db, 'japaneseLearningChats', currentChatId);
       const chatDocSnap = await getDoc(chatDocRef);
 
       if (chatDocSnap.exists()) {
         const chatData = chatDocSnap.data();
 
-        // Check if chat has expired (30 days of inactivity)
-        const now = new Date();
-        const lastUpdated = chatData.lastUpdatedAt?.toDate();
-        if (lastUpdated) {
-          const daysSinceUpdate = (now.getTime() - lastUpdated.getTime()) / (1000 * 60 * 60 * 24);
+        // Check if chat belongs to user
+        if (chatData.userId !== user.uid) {
+          Alert.alert(t('error'), t('chatNotFound', 'Chat not found'));
+          router.back();
+          return;
+        }
 
-          if (daysSinceUpdate > 30) {
-            // Chat expired, don't load it
-            console.log('Chat expired, starting fresh');
-            return;
+        // Check if chat has expired (30 days of inactivity) - only if not important
+        if (!chatData.isImportant) {
+          const now = new Date();
+          const lastUpdated = chatData.lastUpdatedAt?.toDate();
+          if (lastUpdated) {
+            const daysSinceUpdate = (now.getTime() - lastUpdated.getTime()) / (1000 * 60 * 60 * 24);
+
+            if (daysSinceUpdate > 30) {
+              Alert.alert(t('chatExpired', 'Chat Expired'), t('chatExpiredMessage', 'This chat has been automatically deleted due to 30 days of inactivity.'));
+              router.back();
+              return;
+            }
           }
         }
 
@@ -97,6 +112,7 @@ export default function JapaneseLearningScreen() {
         if (chatData.jlptLevel) {
           setJlptLevel(chatData.jlptLevel);
         }
+        setIsImportant(chatData.isImportant || false);
       }
     } catch (error) {
       console.error('Error loading chat history:', error);
@@ -105,27 +121,105 @@ export default function JapaneseLearningScreen() {
     }
   };
 
+  // Generate chat title from first user message
+  const generateChatTitle = (firstUserMessage: string): string => {
+    // Take first 30 characters of first message
+    const title = firstUserMessage.substring(0, 30);
+    return title.length < firstUserMessage.length ? `${title}...` : title;
+  };
+
   // Save chat to Firestore
   const saveChatHistory = async (updatedMessages: ChatMessage[], currentLevel: JLPTLevel) => {
     if (!user) return;
 
     try {
-      const chatDocRef = doc(db, 'japaneseLearningChats', user.uid);
       const now = Timestamp.now();
+      let chatIdToUse = currentChatId;
+
+      // If no chatId, create new chat
+      if (!chatIdToUse) {
+        chatIdToUse = `${user.uid}_${now.toMillis()}`;
+        setCurrentChatId(chatIdToUse);
+      }
+
+      const chatDocRef = doc(db, 'japaneseLearningChats', chatIdToUse);
 
       // Get existing data to preserve createdAt
       const existingDoc = await getDoc(chatDocRef);
-      const createdAt = existingDoc.exists() ? existingDoc.data().createdAt : now;
+      const existingData = existingDoc.exists() ? existingDoc.data() : null;
+
+      // Generate title from first user message if new chat
+      const firstUserMessage = updatedMessages.find(m => m.role === 'user');
+      const title = existingData?.title || (firstUserMessage ? generateChatTitle(firstUserMessage.content) : 'Untitled Chat');
 
       await setDoc(chatDocRef, {
         userId: user.uid,
+        title: title,
         messages: updatedMessages,
         jlptLevel: currentLevel,
-        createdAt: createdAt,
+        isImportant: isImportant,
+        createdAt: existingData?.createdAt || now,
         lastUpdatedAt: now,
       });
     } catch (error) {
       console.error('Error saving chat history:', error);
+    }
+  };
+
+  // Toggle important status
+  const toggleImportant = async () => {
+    if (!user || !currentChatId) return;
+
+    try {
+      // Check limit
+      const importantLimit = subscription === 'ULTRA' ? 100 : subscription === 'PRO' ? 20 : 0;
+
+      if (!isImportant && importantLimit === 0) {
+        Alert.alert(
+          t('upgradeRequired', 'Upgrade Required'),
+          t('importantChatUpgrade', 'Upgrade to PRO or ULTRA to mark chats as important.'),
+          [
+            { text: t('cancel', 'Cancel'), style: 'cancel' },
+            { text: t('upgrade', 'Upgrade'), onPress: () => router.push('/(tabs)/premium') },
+          ]
+        );
+        return;
+      }
+
+      // If trying to mark as important, check count
+      if (!isImportant) {
+        const q = query(
+          collection(db, 'japaneseLearningChats'),
+          where('userId', '==', user.uid),
+          where('isImportant', '==', true)
+        );
+        const snapshot = await getDocs(q);
+
+        if (snapshot.size >= importantLimit) {
+          Alert.alert(
+            t('limitReached', 'Limit Reached'),
+            t('importantLimitMessage', `You have reached the maximum of ${importantLimit} important chats. Please unmark another chat first.`)
+          );
+          return;
+        }
+      }
+
+      const newImportantStatus = !isImportant;
+      setIsImportant(newImportantStatus);
+
+      // Update in Firestore
+      const chatDocRef = doc(db, 'japaneseLearningChats', currentChatId);
+      await setDoc(chatDocRef, { isImportant: newImportantStatus }, { merge: true });
+
+      Alert.alert(
+        t('success'),
+        newImportantStatus
+          ? t('markedImportant', 'Chat marked as important')
+          : t('unmarkedImportant', 'Chat unmarked as important')
+      );
+    } catch (error) {
+      console.error('Error toggling important:', error);
+      Alert.alert(t('error'), t('failedToUpdate', 'Failed to update'));
     }
   };
 
@@ -230,9 +324,17 @@ export default function JapaneseLearningScreen() {
           <Text style={styles.headerTitle}>{t('japaneseLearnTitle', 'Learn Japanese')}</Text>
           <Text style={styles.headerSubtitle}>JLPT {jlptLevel} Level</Text>
         </View>
-        <TouchableOpacity onPress={() => setShowLevelModal(true)} style={styles.settingsButton}>
-          <Settings size={24} color="#2563EB" />
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity onPress={toggleImportant} style={styles.iconButton}>
+            <Star size={22} color={isImportant ? "#F59E0B" : "#9CA3AF"} fill={isImportant ? "#F59E0B" : "none"} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/japanese-chats-list')} style={styles.iconButton}>
+            <List size={22} color="#2563EB" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setShowLevelModal(true)} style={styles.iconButton}>
+            <Settings size={22} color="#2563EB" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Messages */}
@@ -359,8 +461,13 @@ const styles = StyleSheet.create({
     color: '#10B981',
     fontWeight: '600',
   },
-  settingsButton: {
-    padding: 4,
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  iconButton: {
+    padding: 6,
   },
   messagesContainer: {
     flex: 1,

@@ -54,7 +54,7 @@ export default function AIAssistantScreen() {
       titleKey: 'japaneseLearnTitle',
       descKey: 'japaneseLearnDesc',
       color: '#10B981',
-      route: '/japanese-learning',
+      route: '/japanese-chats-list',
     },
     {
       id: 'browser',
