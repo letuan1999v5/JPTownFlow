@@ -1,16 +1,16 @@
-// app/(tabs)/settings.tsx - UPDATED với Auth & Profile
+// app/settings-detail.tsx - Settings screen
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator, Modal } from 'react-native';
-import LanguageSwitcher from '../../components/common/LanguageSwitcher';
-import { UserIcon } from '../../components/icons/Icons';
-import { useAuth } from '../../context/AuthContext';
-import { seedGuides } from '../../scripts/seedGuides';
+import LanguageSwitcher from '../components/common/LanguageSwitcher';
+import { UserIcon } from '../components/icons/Icons';
+import { useAuth } from '../context/AuthContext';
+import { seedGuides } from '../scripts/seedGuides';
 import { useRouter } from 'expo-router';
 import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../../firebase/firebaseConfig';
+import { db } from '../firebase/firebaseConfig';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
-import AuthScreen from '../../components/screens/AuthScreen';
+import AuthScreen from '../components/screens/AuthScreen';
 
 export default function SettingsScreen() {
   const { t } = useTranslation();
@@ -249,24 +249,6 @@ export default function SettingsScreen() {
             <View style={styles.optionButtonTextContainer}>
               <Text style={styles.optionButtonTitle}>{t('changePassword', 'Change Password')}</Text>
               <Text style={styles.optionButtonDescription}>{t('updateYourPassword', 'Update your account password')}</Text>
-            </View>
-            <Text style={styles.optionButtonArrow}>→</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Vocabulary Notebooks - Only for logged in users */}
-      {user && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('learning', 'Learning')}</Text>
-          <TouchableOpacity
-            style={styles.optionButton}
-            onPress={() => router.push('/vocabulary-notebooks')}
-          >
-            <Text style={styles.optionButtonIcon}>📚</Text>
-            <View style={styles.optionButtonTextContainer}>
-              <Text style={styles.optionButtonTitle}>{t('vocabularyNotebooks', 'Vocabulary Notebooks')}</Text>
-              <Text style={styles.optionButtonDescription}>{t('manageYourVocabularyNotebooks', 'Manage your vocabulary notebooks')}</Text>
             </View>
             <Text style={styles.optionButtonArrow}>→</Text>
           </TouchableOpacity>
