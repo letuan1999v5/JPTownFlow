@@ -184,11 +184,17 @@ export async function chatWithAI(
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
 
-    // Build conversation history
-    const history = messages.slice(0, -1).map(msg => ({
+    // Build conversation history (exclude last message)
+    let history = messages.slice(0, -1).map(msg => ({
       role: msg.role === 'user' ? 'user' : 'model',
       parts: [{ text: msg.content }],
     }));
+
+    // Gemini requires first message to be from user
+    // Remove any leading assistant/model messages
+    while (history.length > 0 && history[0].role === 'model') {
+      history = history.slice(1);
+    }
 
     const chat = model.startChat({ history });
     const lastMessage = messages[messages.length - 1].content;
