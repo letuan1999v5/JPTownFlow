@@ -46,7 +46,7 @@ export default function AIAssistantScreen() {
       titleKey: 'aiChatTitle',
       descKey: 'aiChatDesc',
       color: '#2563EB',
-      route: '/ai-chat',
+      route: '/ai-chats-list',
     },
     {
       id: 'japanese',
