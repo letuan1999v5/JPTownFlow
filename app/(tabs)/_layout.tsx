@@ -1,7 +1,7 @@
 // app/(tabs)/_layout.tsx
 
 import { Tabs } from 'expo-router';
-import { BookOpen, Home, MoreHorizontal, Zap, Sparkles, Settings2 } from 'lucide-react-native';
+import { BookOpen, Home, MoreHorizontal, Zap, Sparkles, Settings } from 'lucide-react-native';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -46,7 +46,7 @@ export default function TabLayout() {
         name="settings"
         options={{
           title: t('settingsTab', 'Settings'),
-          tabBarIcon: ({ color }) => <Settings2 size={28} color={color} />,
+          tabBarIcon: ({ color }) => <Settings size={28} color={color} />,
         }}
       />
       <Tabs.Screen
