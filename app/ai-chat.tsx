@@ -15,10 +15,14 @@ import {
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Send } from 'lucide-react-native';
 import { chatWithAI, ChatMessage } from '../services/geminiService';
+import { useAuth } from '../context/AuthContext';
+import { collection, addDoc, query, where, getDocs, orderBy, limit, Timestamp } from 'firebase/firestore';
+import { db } from '../firebase/firebaseConfig';
 
 export default function AIChatScreen() {
   const { t, i18n } = useTranslation();
   const router = useRouter();
+  const { user } = useAuth();
   const scrollViewRef = useRef<ScrollView>(null);
 
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -29,13 +33,73 @@ export default function AIChatScreen() {
   ]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [chatHistoryLoaded, setChatHistoryLoaded] = useState(false);
 
+  // Load chat history on mount
   useEffect(() => {
-    // Scroll to bottom when messages change
+    if (user && !chatHistoryLoaded) {
+      loadChatHistory();
+    }
+  }, [user]);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
     setTimeout(() => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 100);
   }, [messages]);
+
+  // Load chat history from Firestore (last 30 days)
+  const loadChatHistory = async () => {
+    if (!user) return;
+
+    try {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      const q = query(
+        collection(db, 'aiChats'),
+        where('userId', '==', user.uid),
+        where('createdAt', '>=', Timestamp.fromDate(thirtyDaysAgo)),
+        orderBy('createdAt', 'desc'),
+        limit(1)
+      );
+
+      const querySnapshot = await getDocs(q);
+
+      if (!querySnapshot.empty) {
+        const chatDoc = querySnapshot.docs[0];
+        const chatData = chatDoc.data();
+
+        if (chatData.messages && chatData.messages.length > 0) {
+          setMessages(chatData.messages);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading chat history:', error);
+    } finally {
+      setChatHistoryLoaded(true);
+    }
+  };
+
+  // Save chat to Firestore
+  const saveChatHistory = async (updatedMessages: ChatMessage[]) => {
+    if (!user) return;
+
+    try {
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + 30);
+
+      await addDoc(collection(db, 'aiChats'), {
+        userId: user.uid,
+        messages: updatedMessages,
+        createdAt: Timestamp.now(),
+        expiresAt: Timestamp.fromDate(expiryDate),
+      });
+    } catch (error) {
+      console.error('Error saving chat history:', error);
+    }
+  };
 
   const handleSend = async () => {
     if (!inputText.trim() || loading) return;
@@ -57,7 +121,11 @@ export default function AIChatScreen() {
         content: response,
       };
 
-      setMessages((prev) => [...prev, assistantMessage]);
+      const updatedMessages = [...messages, userMessage, assistantMessage];
+      setMessages(updatedMessages);
+
+      // Save to Firebase
+      saveChatHistory(updatedMessages);
     } catch (error) {
       const errorMessage: ChatMessage = {
         role: 'assistant',
