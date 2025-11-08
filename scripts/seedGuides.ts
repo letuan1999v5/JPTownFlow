@@ -6,7 +6,7 @@
  */
 
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { db } from '../firebase/firebaseConfig';
 import { GuideType } from '../types/guide';
 
 interface GuideData {
