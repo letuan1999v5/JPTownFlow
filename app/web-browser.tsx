@@ -1,5 +1,5 @@
 // app/web-browser.tsx
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   View,
@@ -13,20 +13,17 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { WebView } from 'react-native-webview';
-import { ArrowLeft, RefreshCw, Sparkles, MessageCircle } from 'lucide-react-native';
+import * as WebBrowser from 'expo-web-browser';
+import { ArrowLeft, ExternalLink, Sparkles, MessageCircle } from 'lucide-react-native';
 import { summarizeWebContent, askAboutWebContent } from '../services/geminiService';
 
 export default function WebBrowserScreen() {
   const { t, i18n } = useTranslation();
   const router = useRouter();
-  const webViewRef = useRef<WebView>(null);
 
-  const [url, setUrl] = useState('https://www.google.com');
-  const [currentUrl, setCurrentUrl] = useState('https://www.google.com');
-  const [urlInput, setUrlInput] = useState('https://www.google.com');
-  const [loading, setLoading] = useState(false);
+  const [url, setUrl] = useState('');
   const [pageContent, setPageContent] = useState('');
+  const [fetchingContent, setFetchingContent] = useState(false);
 
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [summary, setSummary] = useState('');
@@ -37,8 +34,13 @@ export default function WebBrowserScreen() {
   const [answer, setAnswer] = useState('');
   const [answering, setAnswering] = useState(false);
 
-  const handleGoToUrl = () => {
-    let finalUrl = urlInput.trim();
+  const handleOpenUrl = async () => {
+    if (!url.trim()) {
+      Alert.alert(t('error', 'Error'), t('pleaseEnterUrl', 'Please enter a URL'));
+      return;
+    }
+
+    let finalUrl = url.trim();
 
     // Add https:// if no protocol
     if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
@@ -52,18 +54,61 @@ export default function WebBrowserScreen() {
       }
     }
 
-    setUrl(finalUrl);
+    // Open in browser
+    await WebBrowser.openBrowserAsync(finalUrl);
   };
 
-  const handleRefresh = () => {
-    webViewRef.current?.reload();
+  const handleFetchContent = async () => {
+    if (!url.trim()) {
+      Alert.alert(t('error', 'Error'), t('pleaseEnterUrl', 'Please enter a URL'));
+      return;
+    }
+
+    let finalUrl = url.trim();
+    if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+      if (!finalUrl.includes(' ') && finalUrl.includes('.')) {
+        finalUrl = `https://${finalUrl}`;
+      } else {
+        Alert.alert(t('error', 'Error'), t('invalidUrl', 'Please enter a valid URL'));
+        return;
+      }
+    }
+
+    setFetchingContent(true);
+
+    try {
+      const response = await fetch(finalUrl);
+      const html = await response.text();
+
+      // Extract text from HTML (simple approach)
+      const textContent = html
+        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+        .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      setPageContent(textContent.substring(0, 15000));
+      Alert.alert(
+        t('success', 'Success'),
+        t('contentFetched', 'Content fetched! You can now summarize or ask questions.')
+      );
+    } catch (error) {
+      console.error('Fetch error:', error);
+      Alert.alert(
+        t('error', 'Error'),
+        t('fetchError', 'Failed to fetch content. The website may not allow access.')
+      );
+    } finally {
+      setFetchingContent(false);
+    }
   };
 
   const handleSummarize = async () => {
     if (!pageContent) {
       Alert.alert(
         t('error', 'Error'),
-        t('noContentToSummarize', 'No content available to summarize. Please wait for the page to load.')
+        t('noContentToSummarize', 'No content available. Please fetch content first.')
       );
       return;
     }
@@ -86,7 +131,7 @@ export default function WebBrowserScreen() {
     if (!pageContent) {
       Alert.alert(
         t('error', 'Error'),
-        t('noContentToAsk', 'No content available. Please wait for the page to load.')
+        t('noContentToAsk', 'No content available. Please fetch content first.')
       );
       return;
     }
@@ -109,35 +154,6 @@ export default function WebBrowserScreen() {
     }
   };
 
-  // Inject JavaScript to extract page content
-  const injectedJavaScript = `
-    (function() {
-      try {
-        // Get all text content
-        const textContent = document.body.innerText || document.body.textContent;
-        // Send to React Native
-        window.ReactNativeWebView.postMessage(JSON.stringify({
-          type: 'PAGE_CONTENT',
-          content: textContent.substring(0, 15000) // Limit size
-        }));
-      } catch (e) {
-        console.error('Error extracting content:', e);
-      }
-    })();
-    true;
-  `;
-
-  const handleWebViewMessage = (event: any) => {
-    try {
-      const data = JSON.parse(event.nativeEvent.data);
-      if (data.type === 'PAGE_CONTENT') {
-        setPageContent(data.content);
-      }
-    } catch (error) {
-      console.error('Error parsing message:', error);
-    }
-  };
-
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -150,57 +166,91 @@ export default function WebBrowserScreen() {
         </View>
       </View>
 
-      {/* URL Bar */}
-      <View style={styles.urlBar}>
-        <TextInput
-          style={styles.urlInput}
-          value={urlInput}
-          onChangeText={setUrlInput}
-          placeholder={t('enterUrl', 'Enter URL or search...')}
-          onSubmitEditing={handleGoToUrl}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-        <TouchableOpacity style={styles.refreshButton} onPress={handleRefresh}>
-          <RefreshCw size={20} color="#6B7280" />
-        </TouchableOpacity>
-      </View>
+      <ScrollView style={styles.content}>
+        {/* URL Input Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('enterUrl', 'Enter URL or search...')}</Text>
+          <TextInput
+            style={styles.urlInput}
+            value={url}
+            onChangeText={setUrl}
+            placeholder="https://example.com"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
 
-      {/* WebView */}
-      <WebView
-        ref={webViewRef}
-        source={{ uri: url }}
-        style={styles.webview}
-        onLoadStart={() => setLoading(true)}
-        onLoadEnd={() => setLoading(false)}
-        onNavigationStateChange={(navState) => {
-          setCurrentUrl(navState.url);
-          setUrlInput(navState.url);
-        }}
-        injectedJavaScript={injectedJavaScript}
-        onMessage={handleWebViewMessage}
-      />
+          <View style={styles.actionButtons}>
+            <TouchableOpacity style={styles.openButton} onPress={handleOpenUrl}>
+              <ExternalLink size={20} color="#FFFFFF" />
+              <Text style={styles.openButtonText}>{t('openInBrowser', 'Open in Browser')}</Text>
+            </TouchableOpacity>
 
-      {loading && (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#2563EB" />
+            <TouchableOpacity
+              style={[styles.fetchButton, fetchingContent && styles.fetchButtonDisabled]}
+              onPress={handleFetchContent}
+              disabled={fetchingContent}
+            >
+              {fetchingContent ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <>
+                  <Text style={styles.fetchButtonText}>{t('fetchContent', 'Fetch Content')}</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
-      )}
 
-      {/* AI Actions */}
-      <View style={styles.aiActions}>
-        <TouchableOpacity style={styles.aiButton} onPress={handleSummarize}>
-          <Sparkles size={20} color="#FFFFFF" />
-          <Text style={styles.aiButtonText}>{t('summarize', 'Summarize')}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.aiButton, styles.aiButtonSecondary]}
-          onPress={() => setShowQAModal(true)}
-        >
-          <MessageCircle size={20} color="#FFFFFF" />
-          <Text style={styles.aiButtonText}>{t('askQuestion', 'Ask')}</Text>
-        </TouchableOpacity>
-      </View>
+        {/* Content Status */}
+        {pageContent && (
+          <View style={styles.statusCard}>
+            <Text style={styles.statusTitle}>✓ {t('contentReady', 'Content Ready')}</Text>
+            <Text style={styles.statusText}>
+              {t('contentLength', 'Content length')}: {pageContent.length} {t('characters', 'characters')}
+            </Text>
+          </View>
+        )}
+
+        {/* AI Actions */}
+        {pageContent && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{t('aiActions', 'AI Actions')}</Text>
+
+            <TouchableOpacity style={styles.aiActionCard} onPress={handleSummarize}>
+              <Sparkles size={32} color="#F59E0B" />
+              <View style={styles.aiActionContent}>
+                <Text style={styles.aiActionTitle}>{t('summarize', 'Summarize')}</Text>
+                <Text style={styles.aiActionDesc}>
+                  {t('summarizeDesc', 'Get AI summary of this page')}
+                </Text>
+              </View>
+              <Text style={styles.aiActionArrow}>→</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.aiActionCard} onPress={() => setShowQAModal(true)}>
+              <MessageCircle size={32} color="#2563EB" />
+              <View style={styles.aiActionContent}>
+                <Text style={styles.aiActionTitle}>{t('askQuestion', 'Ask Question')}</Text>
+                <Text style={styles.aiActionDesc}>
+                  {t('askDesc', 'Ask AI about this page')}
+                </Text>
+              </View>
+              <Text style={styles.aiActionArrow}>→</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Instructions */}
+        <View style={styles.infoCard}>
+          <Text style={styles.infoTitle}>ℹ️ {t('howToUse', 'How to Use')}</Text>
+          <Text style={styles.infoText}>
+            {t(
+              'browserInstructions',
+              '1. Enter a URL\n2. Click "Open in Browser" to view the page\n3. Click "Fetch Content" to enable AI features\n4. Use AI to summarize or ask questions about the page'
+            )}
+          </Text>
+        </View>
+      </ScrollView>
 
       {/* Summary Modal */}
       <Modal
@@ -313,62 +363,127 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#1F2937',
   },
-  urlBar: {
-    flexDirection: 'row',
-    padding: 12,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-    gap: 8,
+  content: {
+    flex: 1,
+  },
+  section: {
+    padding: 20,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 12,
   },
   urlInput: {
-    flex: 1,
-    height: 40,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    fontSize: 14,
-  },
-  refreshButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  webview: {
-    flex: 1,
-  },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255, 255, 255, 0.8)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  aiActions: {
-    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 12,
     padding: 12,
+    fontSize: 15,
     backgroundColor: '#FFFFFF',
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+    marginBottom: 12,
+  },
+  actionButtons: {
+    flexDirection: 'row',
     gap: 12,
   },
-  aiButton: {
+  openButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#F59E0B',
+    backgroundColor: '#2563EB',
     paddingVertical: 12,
     borderRadius: 12,
   },
-  aiButtonSecondary: {
-    backgroundColor: '#2563EB',
-  },
-  aiButtonText: {
+  openButtonText: {
     color: '#FFFFFF',
     fontWeight: '600',
     fontSize: 15,
+  },
+  fetchButton: {
+    flex: 1,
+    backgroundColor: '#10B981',
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  fetchButtonDisabled: {
+    backgroundColor: '#9CA3AF',
+  },
+  fetchButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 15,
+  },
+  statusCard: {
+    marginHorizontal: 20,
+    marginBottom: 20,
+    padding: 16,
+    backgroundColor: '#F0FDF4',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+  },
+  statusTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#166534',
+    marginBottom: 4,
+  },
+  statusText: {
+    fontSize: 14,
+    color: '#166534',
+  },
+  aiActionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    marginBottom: 12,
+    gap: 12,
+  },
+  aiActionContent: {
+    flex: 1,
+  },
+  aiActionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  aiActionDesc: {
+    fontSize: 13,
+    color: '#6B7280',
+  },
+  aiActionArrow: {
+    fontSize: 24,
+    color: '#9CA3AF',
+    fontWeight: 'bold',
+  },
+  infoCard: {
+    margin: 20,
+    padding: 16,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#93C5FD',
+  },
+  infoTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 8,
+  },
+  infoText: {
+    fontSize: 14,
+    color: '#4B5563',
+    lineHeight: 20,
   },
   modalOverlay: {
     flex: 1,
