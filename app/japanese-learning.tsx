@@ -18,7 +18,7 @@ import { ArrowLeft, Send, Settings } from 'lucide-react-native';
 import { chatJapaneseLearning, ChatMessage } from '../services/geminiService';
 import TranslatableText from '../components/common/TranslatableText';
 import { useAuth } from '../context/AuthContext';
-import { collection, addDoc, query, where, getDocs, orderBy, limit, Timestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig';
 
 type JLPTLevel = 'N1' | 'N2' | 'N3' | 'N4' | 'N5';
@@ -67,27 +67,29 @@ export default function JapaneseLearningScreen() {
     }, 100);
   }, [messages]);
 
-  // Load chat history from Firestore (last 30 days)
+  // Load chat history from Firestore
   const loadChatHistory = async () => {
     if (!user) return;
 
     try {
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const chatDocRef = doc(db, 'japaneseLearningChats', user.uid);
+      const chatDocSnap = await getDoc(chatDocRef);
 
-      const q = query(
-        collection(db, 'japaneseLearningChats'),
-        where('userId', '==', user.uid),
-        where('createdAt', '>=', Timestamp.fromDate(thirtyDaysAgo)),
-        orderBy('createdAt', 'desc'),
-        limit(1)
-      );
+      if (chatDocSnap.exists()) {
+        const chatData = chatDocSnap.data();
 
-      const querySnapshot = await getDocs(q);
+        // Check if chat has expired (30 days of inactivity)
+        const now = new Date();
+        const lastUpdated = chatData.lastUpdatedAt?.toDate();
+        if (lastUpdated) {
+          const daysSinceUpdate = (now.getTime() - lastUpdated.getTime()) / (1000 * 60 * 60 * 24);
 
-      if (!querySnapshot.empty) {
-        const chatDoc = querySnapshot.docs[0];
-        const chatData = chatDoc.data();
+          if (daysSinceUpdate > 30) {
+            // Chat expired, don't load it
+            console.log('Chat expired, starting fresh');
+            return;
+          }
+        }
 
         if (chatData.messages && chatData.messages.length > 0) {
           setMessages(chatData.messages);
@@ -108,15 +110,19 @@ export default function JapaneseLearningScreen() {
     if (!user) return;
 
     try {
-      const expiryDate = new Date();
-      expiryDate.setDate(expiryDate.getDate() + 30);
+      const chatDocRef = doc(db, 'japaneseLearningChats', user.uid);
+      const now = Timestamp.now();
 
-      await addDoc(collection(db, 'japaneseLearningChats'), {
+      // Get existing data to preserve createdAt
+      const existingDoc = await getDoc(chatDocRef);
+      const createdAt = existingDoc.exists() ? existingDoc.data().createdAt : now;
+
+      await setDoc(chatDocRef, {
         userId: user.uid,
         messages: updatedMessages,
         jlptLevel: currentLevel,
-        createdAt: Timestamp.now(),
-        expiresAt: Timestamp.fromDate(expiryDate),
+        createdAt: createdAt,
+        lastUpdatedAt: now,
       });
     } catch (error) {
       console.error('Error saving chat history:', error);
