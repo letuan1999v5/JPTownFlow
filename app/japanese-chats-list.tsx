@@ -1,5 +1,5 @@
 // app/japanese-chats-list.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   View,
@@ -11,7 +11,7 @@ import {
   Alert,
   Modal,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { ArrowLeft, Plus, MessageCircle, Star, Trash2, Info } from 'lucide-react-native';
 import { useAuth } from '../context/AuthContext';
 import { collection, query, where, getDocs, orderBy, deleteDoc, doc, Timestamp } from 'firebase/firestore';
@@ -38,11 +38,21 @@ export default function JapaneseChatsListScreen() {
   const importantLimit = subscription === 'ULTRA' ? 100 : subscription === 'PRO' ? 20 : 0;
   const importantCount = chats.filter(c => c.isImportant).length;
 
+  // Load chats on mount
   useEffect(() => {
     if (user) {
       loadChats();
     }
   }, [user]);
+
+  // Reload chats when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      if (user) {
+        loadChats();
+      }
+    }, [user])
+  );
 
   const loadChats = async () => {
     if (!user) return;
