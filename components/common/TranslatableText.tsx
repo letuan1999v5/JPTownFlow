@@ -1,8 +1,9 @@
 // components/common/TranslatableText.tsx
 import React, { useState } from 'react';
 import { Text, TouchableOpacity, StyleSheet, View, Modal } from 'react-native';
+import { BookmarkPlus } from 'lucide-react-native';
 
-interface TranslatableWord {
+export interface TranslatableWord {
   kanji: string;
   hiragana: string;
   translation: string;
@@ -11,10 +12,19 @@ interface TranslatableWord {
 interface TranslatableTextProps {
   text: string;
   textStyle?: any;
+  onSaveWord?: (word: TranslatableWord) => void;
+  jlptLevel?: 'N1' | 'N2' | 'N3' | 'N4' | 'N5';
 }
 
-export default function TranslatableText({ text, textStyle }: TranslatableTextProps) {
+export default function TranslatableText({ text, textStyle, onSaveWord, jlptLevel }: TranslatableTextProps) {
   const [selectedWord, setSelectedWord] = useState<TranslatableWord | null>(null);
+
+  const handleSaveWord = () => {
+    if (selectedWord && onSaveWord) {
+      onSaveWord(selectedWord);
+      setSelectedWord(null);
+    }
+  };
 
   // Parse text to find {{kanji|hiragana|translation}} patterns
   const parseText = (inputText: string) => {
@@ -81,12 +91,27 @@ export default function TranslatableText({ text, textStyle }: TranslatableTextPr
           activeOpacity={1}
           onPress={() => setSelectedWord(null)}
         >
-          <View style={styles.translationCard}>
-            <Text style={styles.kanjiText}>{selectedWord?.kanji}</Text>
-            <Text style={styles.hiraganaText}>{selectedWord?.hiragana}</Text>
-            <View style={styles.divider} />
-            <Text style={styles.translationText}>{selectedWord?.translation}</Text>
-          </View>
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.translationCard}>
+              <Text style={styles.kanjiText}>{selectedWord?.kanji}</Text>
+              <Text style={styles.hiraganaText}>{selectedWord?.hiragana}</Text>
+              <View style={styles.divider} />
+              <Text style={styles.translationText}>{selectedWord?.translation}</Text>
+
+              {onSaveWord && (
+                <>
+                  <View style={styles.divider} />
+                  <TouchableOpacity
+                    style={styles.saveButton}
+                    onPress={handleSaveWord}
+                  >
+                    <BookmarkPlus size={20} color="#10B981" />
+                    <Text style={styles.saveButtonText}>Save to Notebook</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
     </>
@@ -146,5 +171,21 @@ const styles = StyleSheet.create({
     color: '#374151',
     textAlign: 'center',
     lineHeight: 22,
+  },
+  saveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F0FDF4',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    gap: 8,
+    marginTop: 8,
+  },
+  saveButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#10B981',
   },
 });
