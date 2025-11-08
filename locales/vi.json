@@ -225,6 +225,10 @@
   "passwordResetEmailSent": "Email đặt lại mật khẩu đã được gửi. Vui lòng kiểm tra hộp thư.",
   "passwordResetError": "Lỗi khi gửi email đặt lại mật khẩu",
 
+  "security": "Bảo mật",
+  "updateYourPassword": "Cập nhật mật khẩu tài khoản",
+  "loginToAccessFeatures": "Đăng nhập để truy cập tính năng premium",
+
   "account": "Tài khoản",
   "freeAccount": "Tài khoản miễn phí",
   "logout": "Đăng xuất",

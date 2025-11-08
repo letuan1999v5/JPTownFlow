@@ -235,6 +235,10 @@
   "passwordResetEmailSent": "Password reset email sent. Please check your inbox.",
   "passwordResetError": "Error sending password reset email",
 
+  "security": "Security",
+  "updateYourPassword": "Update your account password",
+  "loginToAccessFeatures": "Login to access premium features",
+
   "account": "Account",
   "freeAccount": "Free Account",
   "logout": "Logout",

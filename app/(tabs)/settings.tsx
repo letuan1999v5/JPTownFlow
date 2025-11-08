@@ -1,7 +1,7 @@
 // app/(tabs)/settings.tsx - UPDATED với Auth & Profile
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator, Modal } from 'react-native';
 import LanguageSwitcher from '../../components/common/LanguageSwitcher';
 import { UserIcon } from '../../components/icons/Icons';
 import { useAuth } from '../../context/AuthContext';
@@ -17,6 +17,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const [seeding, setSeeding] = useState(false);
   const [fixingRole, setFixingRole] = useState(false);
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -106,6 +107,7 @@ export default function SettingsScreen() {
       setNewPassword('');
       setConfirmNewPassword('');
       setChangingPassword(false);
+      setShowChangePasswordModal(false);
 
       Alert.alert(t('success'), t('passwordChangedSuccess'));
     } catch (error: any) {
@@ -215,56 +217,39 @@ export default function SettingsScreen() {
         </View>
       )}
 
-      {/* Change Password Section - Only for logged in users */}
+      {/* Login Section - Only for non-logged users */}
+      {!user && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('account', 'Account')}</Text>
+          <TouchableOpacity
+            style={styles.loginButton}
+            onPress={() => router.push('/auth')}
+          >
+            <Text style={styles.loginButtonIcon}>🔑</Text>
+            <View style={styles.loginButtonTextContainer}>
+              <Text style={styles.loginButtonTitle}>{t('login', 'Login')}</Text>
+              <Text style={styles.loginButtonDescription}>{t('loginToAccessFeatures', 'Login to access premium features')}</Text>
+            </View>
+            <Text style={styles.loginButtonArrow}>→</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Change Password Option - Only for logged in users */}
       {user && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('changePassword', 'Change Password')}</Text>
-          <View style={styles.passwordCard}>
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>{t('currentPassword', 'Current Password')}</Text>
-              <TextInput
-                style={styles.input}
-                value={currentPassword}
-                onChangeText={setCurrentPassword}
-                secureTextEntry
-                placeholder="••••••••"
-              />
+          <Text style={styles.sectionTitle}>{t('security', 'Security')}</Text>
+          <TouchableOpacity
+            style={styles.optionButton}
+            onPress={() => setShowChangePasswordModal(true)}
+          >
+            <Text style={styles.optionButtonIcon}>🔒</Text>
+            <View style={styles.optionButtonTextContainer}>
+              <Text style={styles.optionButtonTitle}>{t('changePassword', 'Change Password')}</Text>
+              <Text style={styles.optionButtonDescription}>{t('updateYourPassword', 'Update your account password')}</Text>
             </View>
-
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>{t('newPassword', 'New Password')}</Text>
-              <TextInput
-                style={styles.input}
-                value={newPassword}
-                onChangeText={setNewPassword}
-                secureTextEntry
-                placeholder="••••••••"
-              />
-            </View>
-
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>{t('confirmPassword', 'Confirm New Password')}</Text>
-              <TextInput
-                style={styles.input}
-                value={confirmNewPassword}
-                onChangeText={setConfirmNewPassword}
-                secureTextEntry
-                placeholder="••••••••"
-              />
-            </View>
-
-            <TouchableOpacity
-              style={[styles.changePasswordButton, changingPassword && styles.changePasswordButtonDisabled]}
-              onPress={handleChangePassword}
-              disabled={changingPassword}
-            >
-              {changingPassword ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.changePasswordButtonText}>{t('changePassword', 'Change Password')}</Text>
-              )}
-            </TouchableOpacity>
-          </View>
+            <Text style={styles.optionButtonArrow}>→</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -325,6 +310,80 @@ export default function SettingsScreen() {
           </Text>
         </View>
       )}
+
+      {/* Change Password Modal */}
+      <Modal
+        visible={showChangePasswordModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowChangePasswordModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{t('changePassword', 'Change Password')}</Text>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => {
+                  setShowChangePasswordModal(false);
+                  setCurrentPassword('');
+                  setNewPassword('');
+                  setConfirmNewPassword('');
+                }}
+              >
+                <Text style={styles.modalCloseButtonText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalBody}>
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>{t('currentPassword', 'Current Password')}</Text>
+                <TextInput
+                  style={styles.input}
+                  value={currentPassword}
+                  onChangeText={setCurrentPassword}
+                  secureTextEntry
+                  placeholder="••••••••"
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>{t('newPassword', 'New Password')}</Text>
+                <TextInput
+                  style={styles.input}
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  secureTextEntry
+                  placeholder="••••••••"
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>{t('confirmPassword', 'Confirm New Password')}</Text>
+                <TextInput
+                  style={styles.input}
+                  value={confirmNewPassword}
+                  onChangeText={setConfirmNewPassword}
+                  secureTextEntry
+                  placeholder="••••••••"
+                />
+              </View>
+
+              <TouchableOpacity
+                style={[styles.changePasswordButton, changingPassword && styles.changePasswordButtonDisabled]}
+                onPress={handleChangePassword}
+                disabled={changingPassword}
+              >
+                {changingPassword ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.changePasswordButtonText}>{t('changePassword', 'Change Password')}</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -548,5 +607,114 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+
+  // Login Button (for non-logged users)
+  loginButton: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 2,
+    borderColor: '#2563EB',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  loginButtonIcon: {
+    fontSize: 32,
+  },
+  loginButtonTextContainer: {
+    flex: 1,
+  },
+  loginButtonTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2563EB',
+    marginBottom: 2,
+  },
+  loginButtonDescription: {
+    fontSize: 13,
+    color: '#6B7280',
+  },
+  loginButtonArrow: {
+    fontSize: 24,
+    color: '#2563EB',
+    fontWeight: 'bold',
+  },
+
+  // Option Button (for Change Password, etc.)
+  optionButton: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  optionButtonIcon: {
+    fontSize: 28,
+  },
+  optionButtonTextContainer: {
+    flex: 1,
+  },
+  optionButtonTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 2,
+  },
+  optionButtonDescription: {
+    fontSize: 13,
+    color: '#6B7280',
+  },
+  optionButtonArrow: {
+    fontSize: 20,
+    color: '#9CA3AF',
+    fontWeight: 'bold',
+  },
+
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 40,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1F2937',
+  },
+  modalCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCloseButtonText: {
+    fontSize: 20,
+    color: '#6B7280',
+    fontWeight: 'bold',
+  },
+  modalBody: {
+    padding: 20,
   },
 });
