@@ -45,6 +45,7 @@ const SAMPLE_GUIDES: GuideData[] = [
       en: 'Detailed guide on how to register and use My Number card in Japan',
       ja: '日本でマイナンバーカードを申請・使用する方法の詳細ガイド',
     },
+    imageUrl: 'https://images.unsplash.com/photo-1554224311-beee2fae2a82?w=800&h=400&fit=crop',
     content: {
       vi: `# Thẻ My Number là gì?
 
@@ -173,6 +174,7 @@ After 1 month, you'll receive notification to pick up at ward office.
       en: 'Guide on procedures and required documents for visa renewal in Japan',
       ja: '日本でのビザ更新に必要な手続きと書類のガイド',
     },
+    imageUrl: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=800&h=400&fit=crop',
     content: {
       vi: `# Gia hạn Visa tại Nhật Bản
 
@@ -366,6 +368,7 @@ If rejected, you can:
       en: 'Smart shopping secrets to save on living costs in Japan',
       ja: '日本での生活費を節約するスマートな買い物術',
     },
+    imageUrl: 'https://images.unsplash.com/photo-1604719312566-8912e9227c6a?w=800&h=400&fit=crop',
     content: {
       vi: `# Mẹo mua thực phẩm ngon rẻ tại Nhật
 
@@ -626,6 +629,7 @@ Good items to buy in bulk:
       en: 'Secrets to save money on train travel in Japan',
       ja: '日本で電車代を節約する秘訣',
     },
+    imageUrl: 'https://images.unsplash.com/photo-1464037866556-6812c9d1c72e?w=800&h=400&fit=crop',
     content: {
       vi: `# Mẹo tiết kiệm chi phí tàu điện
 

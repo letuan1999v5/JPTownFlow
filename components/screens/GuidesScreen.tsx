@@ -24,7 +24,8 @@ export const GuidesScreen: React.FC = () => {
   const router = useRouter();
   const [guides, setGuides] = useState<Guide[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedTypes, setSelectedTypes] = useState<string[]>([]); // FREE, PREMIUM
 
   useEffect(() => {
     loadGuides();
@@ -56,9 +57,15 @@ export const GuidesScreen: React.FC = () => {
     }
   };
 
-  const filteredGuides = selectedCategory
-    ? guides.filter(guide => guide.category === selectedCategory)
-    : guides;
+  const filteredGuides = guides.filter(guide => {
+    // Filter by category
+    const categoryMatch = selectedCategories.length === 0 || selectedCategories.includes(guide.category);
+
+    // Filter by type (FREE/PREMIUM)
+    const typeMatch = selectedTypes.length === 0 || selectedTypes.includes(guide.type);
+
+    return categoryMatch && typeMatch;
+  });
 
   const canAccessGuide = (guide: Guide): boolean => {
     if (guide.type === 'FREE') return true;
@@ -89,44 +96,105 @@ export const GuidesScreen: React.FC = () => {
     });
   };
 
+  const toggleCategory = (categoryId: string) => {
+    setSelectedCategories(prev => {
+      if (prev.includes(categoryId)) {
+        return prev.filter(id => id !== categoryId);
+      } else {
+        return [...prev, categoryId];
+      }
+    });
+  };
+
+  const toggleType = (type: string) => {
+    setSelectedTypes(prev => {
+      if (prev.includes(type)) {
+        return prev.filter(t => t !== type);
+      } else {
+        return [...prev, type];
+      }
+    });
+  };
+
+  const clearAllFilters = () => {
+    setSelectedCategories([]);
+    setSelectedTypes([]);
+  };
+
   const renderCategoryFilter = () => (
-    <View style={styles.categoryContainer}>
-      <TouchableOpacity
-        style={[
-          styles.categoryButton,
-          selectedCategory === null && styles.categoryButtonActive,
-        ]}
-        onPress={() => setSelectedCategory(null)}
-      >
-        <Text
-          style={[
-            styles.categoryButtonText,
-            selectedCategory === null && styles.categoryButtonTextActive,
-          ]}
-        >
-          {t('all')}
-        </Text>
-      </TouchableOpacity>
-      {GUIDE_CATEGORIES.map(category => (
-        <TouchableOpacity
-          key={category.id}
-          style={[
-            styles.categoryButton,
-            selectedCategory === category.id && styles.categoryButtonActive,
-          ]}
-          onPress={() => setSelectedCategory(category.id)}
-        >
-          <Text style={styles.categoryIcon}>{category.icon}</Text>
-          <Text
+    <View style={styles.filterContainer}>
+      {/* Type Filters (FREE/PREMIUM) */}
+      <View style={styles.filterSection}>
+        <Text style={styles.filterLabel}>{t('type')}:</Text>
+        <View style={styles.filterRow}>
+          <TouchableOpacity
             style={[
-              styles.categoryButtonText,
-              selectedCategory === category.id && styles.categoryButtonTextActive,
+              styles.typeButton,
+              selectedTypes.includes('FREE') && styles.typeButtonActiveGreen,
             ]}
+            onPress={() => toggleType('FREE')}
           >
-            {t(category.nameKey)}
-          </Text>
+            <Text
+              style={[
+                styles.typeButtonText,
+                selectedTypes.includes('FREE') && styles.typeButtonTextActive,
+              ]}
+            >
+              {t('free')}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.typeButton,
+              selectedTypes.includes('PREMIUM') && styles.typeButtonActiveOrange,
+            ]}
+            onPress={() => toggleType('PREMIUM')}
+          >
+            <Text
+              style={[
+                styles.typeButtonText,
+                selectedTypes.includes('PREMIUM') && styles.typeButtonTextActive,
+              ]}
+            >
+              {t('premium')}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Category Filters */}
+      <View style={styles.filterSection}>
+        <Text style={styles.filterLabel}>{t('category')}:</Text>
+        <View style={styles.categoryContainer}>
+          {GUIDE_CATEGORIES.map(category => (
+            <TouchableOpacity
+              key={category.id}
+              style={[
+                styles.categoryButton,
+                selectedCategories.includes(category.id) && styles.categoryButtonActive,
+              ]}
+              onPress={() => toggleCategory(category.id)}
+            >
+              <Text style={styles.categoryIcon}>{category.icon}</Text>
+              <Text
+                style={[
+                  styles.categoryButtonText,
+                  selectedCategories.includes(category.id) && styles.categoryButtonTextActive,
+                ]}
+              >
+                {t(category.nameKey)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      {/* Clear filters button */}
+      {(selectedCategories.length > 0 || selectedTypes.length > 0) && (
+        <TouchableOpacity style={styles.clearButton} onPress={clearAllFilters}>
+          <Text style={styles.clearButtonText}>{t('clearFilters')}</Text>
         </TouchableOpacity>
-      ))}
+      )}
     </View>
   );
 
@@ -240,15 +308,69 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
   },
+  filterContainer: {
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  filterSection: {
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  filterLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+  },
+  filterRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  typeButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  typeButtonActiveGreen: {
+    backgroundColor: '#10B981',
+    borderColor: '#10B981',
+  },
+  typeButtonActiveOrange: {
+    backgroundColor: '#F59E0B',
+    borderColor: '#F59E0B',
+  },
+  typeButtonText: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '600',
+  },
+  typeButtonTextActive: {
+    color: '#FFFFFF',
+  },
   categoryContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
     gap: 8,
+  },
+  clearButton: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  clearButtonText: {
+    fontSize: 14,
+    color: '#DC2626',
+    fontWeight: '600',
   },
   categoryButton: {
     flexDirection: 'row',
