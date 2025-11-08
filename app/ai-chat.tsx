@@ -11,13 +11,17 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Modal,
+  Alert,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Send, Star, List } from 'lucide-react-native';
+import { ArrowLeft, Send, Star, List, Settings } from 'lucide-react-native';
 import { chatWithAI, ChatMessage } from '../services/geminiService';
 import { useAuth } from '../context/AuthContext';
 import { doc, setDoc, getDoc, Timestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig';
+
+type TranslationLanguage = 'ja' | 'en' | 'vi' | 'zh' | 'ko' | 'pt' | 'es' | 'fil' | 'th' | 'id';
 
 export default function AIChatScreen() {
   const { t, i18n } = useTranslation();
@@ -32,6 +36,10 @@ export default function AIChatScreen() {
   const [currentChatId, setCurrentChatId] = useState<string | null>(
     typeof chatId === 'string' ? chatId : null
   );
+  const [translationLanguage, setTranslationLanguage] = useState<TranslationLanguage>(
+    i18n.language as TranslationLanguage
+  );
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [isImportant, setIsImportant] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -42,6 +50,19 @@ export default function AIChatScreen() {
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
   const [chatHistoryLoaded, setChatHistoryLoaded] = useState(false);
+
+  const translationLanguages: { code: TranslationLanguage; name: string; flag: string }[] = [
+    { code: 'en', name: 'English', flag: '🇬🇧' },
+    { code: 'vi', name: 'Tiếng Việt', flag: '🇻🇳' },
+    { code: 'ja', name: '日本語', flag: '🇯🇵' },
+    { code: 'zh', name: '中文', flag: '🇨🇳' },
+    { code: 'ko', name: '한국어', flag: '🇰🇷' },
+    { code: 'pt', name: 'Português', flag: '🇧🇷' },
+    { code: 'es', name: 'Español', flag: '🇪🇸' },
+    { code: 'fil', name: 'Filipino', flag: '🇵🇭' },
+    { code: 'th', name: 'ไทย', flag: '🇹🇭' },
+    { code: 'id', name: 'Bahasa Indonesia', flag: '🇮🇩' },
+  ];
 
   // Load chat history on mount
   useEffect(() => {
@@ -93,6 +114,9 @@ export default function AIChatScreen() {
         if (chatData.messages && chatData.messages.length > 0) {
           setMessages(chatData.messages);
         }
+        if (chatData.translationLanguage) {
+          setTranslationLanguage(chatData.translationLanguage);
+        }
         setIsImportant(chatData.isImportant || false);
       }
     } catch (error) {
@@ -137,6 +161,7 @@ export default function AIChatScreen() {
         userId: user.uid,
         title: title,
         messages: updatedMessages,
+        translationLanguage: translationLanguage,
         isImportant: isImportant,
         createdAt: existingData?.createdAt || now,
         lastUpdatedAt: now,
@@ -216,7 +241,7 @@ export default function AIChatScreen() {
     setLoading(true);
 
     try {
-      const response = await chatWithAI([...messages, userMessage], i18n.language);
+      const response = await chatWithAI([...messages, userMessage], translationLanguage);
 
       const assistantMessage: ChatMessage = {
         role: 'assistant',
@@ -237,6 +262,18 @@ export default function AIChatScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleTranslationLanguageChange = (langCode: TranslationLanguage) => {
+    setTranslationLanguage(langCode);
+
+    // Add system message about language change
+    const langName = translationLanguages.find(l => l.code === langCode)?.name || langCode;
+    const langChangeMessage: ChatMessage = {
+      role: 'assistant',
+      content: `Translation language changed to ${langName}`,
+    };
+    setMessages((prev) => [...prev, langChangeMessage]);
   };
 
   // Show subscription required message if no subscription
@@ -287,7 +324,9 @@ export default function AIChatScreen() {
         </TouchableOpacity>
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>{t('aiChatTitle', 'AI Chat')}</Text>
-          <Text style={styles.headerSubtitle}>{t('poweredByGemini', 'Powered by Gemini')}</Text>
+          <Text style={styles.headerSubtitle}>
+            {translationLanguages.find(l => l.code === translationLanguage)?.flag} {translationLanguages.find(l => l.code === translationLanguage)?.name}
+          </Text>
         </View>
         <View style={styles.headerButtons}>
           <TouchableOpacity onPress={toggleImportant} style={styles.iconButton}>
@@ -295,6 +334,9 @@ export default function AIChatScreen() {
           </TouchableOpacity>
           <TouchableOpacity onPress={() => router.push('/ai-chats-list')} style={styles.iconButton}>
             <List size={22} color="#2563EB" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setShowSettingsModal(true)} style={styles.iconButton}>
+            <Settings size={22} color="#2563EB" />
           </TouchableOpacity>
         </View>
       </View>
@@ -349,6 +391,47 @@ export default function AIChatScreen() {
           <Send size={20} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
+
+      {/* Settings Modal */}
+      <Modal
+        visible={showSettingsModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowSettingsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{t('chatSettings', 'Chat Settings')}</Text>
+
+            {/* Translation Language Section */}
+            <Text style={styles.sectionTitle}>{t('translationLanguage', 'Translation Language')}</Text>
+            <ScrollView style={styles.languageScrollView}>
+              {translationLanguages.map((lang) => (
+                <TouchableOpacity
+                  key={lang.code}
+                  style={[
+                    styles.levelOption,
+                    translationLanguage === lang.code && styles.levelOptionSelected,
+                  ]}
+                  onPress={() => handleTranslationLanguageChange(lang.code)}
+                >
+                  <View style={styles.levelOptionContent}>
+                    <Text style={styles.levelName}>{lang.flag} {lang.name}</Text>
+                  </View>
+                  {translationLanguage === lang.code && <Text style={styles.checkmark}>✓</Text>}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowSettingsModal(false)}
+            >
+              <Text style={styles.modalCloseButtonText}>{t('close', 'Close')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -493,5 +576,71 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     padding: 6,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 40,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 12,
+  },
+  languageScrollView: {
+    maxHeight: 300,
+  },
+  levelOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    marginBottom: 12,
+  },
+  levelOptionSelected: {
+    borderColor: '#2563EB',
+    backgroundColor: '#EFF6FF',
+  },
+  levelOptionContent: {
+    flex: 1,
+  },
+  levelName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1F2937',
+  },
+  checkmark: {
+    fontSize: 24,
+    color: '#2563EB',
+    fontWeight: 'bold',
+  },
+  modalCloseButton: {
+    marginTop: 8,
+    padding: 16,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  modalCloseButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6B7280',
   },
 });
