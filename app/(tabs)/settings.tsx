@@ -21,8 +21,8 @@ export default function SettingsScreen() {
   const isAdmin = role === 'admin' || role === 'superadmin';
   const isSuperAdmin = role === 'superadmin';
 
-  // Check if this user should be superadmin but role is missing
-  const shouldBeSuperAdmin = user?.email === 'letuan1999@gmail.com' && !role;
+  // Check if this user should be superadmin but role is wrong (null or 'user')
+  const shouldBeSuperAdmin = user?.email === 'letuan1999@gmail.com' && role !== 'superadmin';
 
   const handleLogout = async () => {
     Alert.alert(
@@ -140,9 +140,9 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>⚠️ Role Setup Required</Text>
           <View style={styles.warningCard}>
-            <Text style={styles.warningTitle}>Missing Super Admin Role</Text>
+            <Text style={styles.warningTitle}>Incorrect Role</Text>
             <Text style={styles.warningDescription}>
-              Your account (letuan1999@gmail.com) should be a Super Admin, but the role field is missing in the database.
+              Your account (letuan1999@gmail.com) should be a Super Admin, but currently has role: "{role || 'none'}". Click below to fix this.
             </Text>
             <TouchableOpacity
               style={[styles.fixRoleButton, fixingRole && styles.fixRoleButtonDisabled]}
