@@ -12,22 +12,27 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { ArrowLeft, Send } from 'lucide-react-native';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { ArrowLeft, Send, Star, List } from 'lucide-react-native';
 import { chatWithAI, ChatMessage } from '../services/geminiService';
 import { useAuth } from '../context/AuthContext';
-import { doc, setDoc, getDoc, Timestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, Timestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig';
 
 export default function AIChatScreen() {
   const { t, i18n } = useTranslation();
   const router = useRouter();
+  const { chatId } = useLocalSearchParams();
   const { user, subscription } = useAuth();
   const scrollViewRef = useRef<ScrollView>(null);
 
   // Check subscription status
   const hasSubscription = subscription === 'PRO' || subscription === 'ULTRA';
 
+  const [currentChatId, setCurrentChatId] = useState<string | null>(
+    typeof chatId === 'string' ? chatId : null
+  );
+  const [isImportant, setIsImportant] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
@@ -54,31 +59,41 @@ export default function AIChatScreen() {
 
   // Load chat history from Firestore
   const loadChatHistory = async () => {
-    if (!user) return;
+    if (!user || !currentChatId) return;
 
     try {
-      const chatDocRef = doc(db, 'aiChats', user.uid);
+      const chatDocRef = doc(db, 'aiChats', currentChatId);
       const chatDocSnap = await getDoc(chatDocRef);
 
       if (chatDocSnap.exists()) {
         const chatData = chatDocSnap.data();
 
-        // Check if chat has expired (30 days of inactivity)
-        const now = new Date();
-        const lastUpdated = chatData.lastUpdatedAt?.toDate();
-        if (lastUpdated) {
-          const daysSinceUpdate = (now.getTime() - lastUpdated.getTime()) / (1000 * 60 * 60 * 24);
+        // Check if chat belongs to user
+        if (chatData.userId !== user.uid) {
+          Alert.alert(t('error'), t('chatNotFound', 'Chat not found'));
+          router.back();
+          return;
+        }
 
-          if (daysSinceUpdate > 30) {
-            // Chat expired, don't load it
-            console.log('Chat expired, starting fresh');
-            return;
+        // Check if chat has expired (30 days of inactivity) - only if not important
+        if (!chatData.isImportant) {
+          const now = new Date();
+          const lastUpdated = chatData.lastUpdatedAt?.toDate();
+          if (lastUpdated) {
+            const daysSinceUpdate = (now.getTime() - lastUpdated.getTime()) / (1000 * 60 * 60 * 24);
+
+            if (daysSinceUpdate > 30) {
+              Alert.alert(t('chatExpired', 'Chat Expired'), t('chatExpiredMessage', 'This chat has been automatically deleted due to 30 days of inactivity.'));
+              router.back();
+              return;
+            }
           }
         }
 
         if (chatData.messages && chatData.messages.length > 0) {
           setMessages(chatData.messages);
         }
+        setIsImportant(chatData.isImportant || false);
       }
     } catch (error) {
       console.error('Error loading chat history:', error);
@@ -87,26 +102,104 @@ export default function AIChatScreen() {
     }
   };
 
+  // Generate chat title from first user message
+  const generateChatTitle = (firstUserMessage: string): string => {
+    // Take first 30 characters of first message
+    const title = firstUserMessage.substring(0, 30);
+    return title.length < firstUserMessage.length ? `${title}...` : title;
+  };
+
   // Save chat to Firestore
   const saveChatHistory = async (updatedMessages: ChatMessage[]) => {
     if (!user) return;
 
     try {
-      const chatDocRef = doc(db, 'aiChats', user.uid);
       const now = Timestamp.now();
+      let chatIdToUse = currentChatId;
+
+      // If no chatId, create new chat
+      if (!chatIdToUse) {
+        chatIdToUse = `${user.uid}_${now.toMillis()}`;
+        setCurrentChatId(chatIdToUse);
+      }
+
+      const chatDocRef = doc(db, 'aiChats', chatIdToUse);
 
       // Get existing data to preserve createdAt
       const existingDoc = await getDoc(chatDocRef);
-      const createdAt = existingDoc.exists() ? existingDoc.data().createdAt : now;
+      const existingData = existingDoc.exists() ? existingDoc.data() : null;
+
+      // Generate title from first user message if new chat
+      const firstUserMessage = updatedMessages.find(m => m.role === 'user');
+      const title = existingData?.title || (firstUserMessage ? generateChatTitle(firstUserMessage.content) : 'Untitled Chat');
 
       await setDoc(chatDocRef, {
         userId: user.uid,
+        title: title,
         messages: updatedMessages,
-        createdAt: createdAt,
+        isImportant: isImportant,
+        createdAt: existingData?.createdAt || now,
         lastUpdatedAt: now,
       });
     } catch (error) {
       console.error('Error saving chat history:', error);
+    }
+  };
+
+  // Toggle important status
+  const toggleImportant = async () => {
+    if (!user || !currentChatId) return;
+
+    try {
+      // Check limit
+      const importantLimit = subscription === 'ULTRA' ? 100 : subscription === 'PRO' ? 20 : 0;
+
+      if (!isImportant && importantLimit === 0) {
+        Alert.alert(
+          t('upgradeRequired', 'Upgrade Required'),
+          t('importantChatUpgrade', 'Upgrade to PRO or ULTRA to mark chats as important.'),
+          [
+            { text: t('cancel', 'Cancel'), style: 'cancel' },
+            { text: t('upgrade', 'Upgrade'), onPress: () => router.push('/(tabs)/premium') },
+          ]
+        );
+        return;
+      }
+
+      // If trying to mark as important, check count
+      if (!isImportant) {
+        const q = query(
+          collection(db, 'aiChats'),
+          where('userId', '==', user.uid),
+          where('isImportant', '==', true)
+        );
+        const snapshot = await getDocs(q);
+
+        if (snapshot.size >= importantLimit) {
+          Alert.alert(
+            t('limitReached', 'Limit Reached'),
+            t('importantLimitMessage', `You have reached the maximum of ${importantLimit} important chats. Please unmark another chat first.`)
+          );
+          return;
+        }
+      }
+
+      const newImportantStatus = !isImportant;
+      setIsImportant(newImportantStatus);
+
+      // Update in Firestore
+      const chatDocRef = doc(db, 'aiChats', currentChatId);
+      await setDoc(chatDocRef, { isImportant: newImportantStatus }, { merge: true });
+
+      Alert.alert(
+        t('success'),
+        newImportantStatus
+          ? t('markedImportant', 'Chat marked as important')
+          : t('unmarkedImportant', 'Chat unmarked as important')
+      );
+    } catch (error) {
+      console.error('Error toggling important:', error);
+      Alert.alert(t('error'), t('failedToUpdate', 'Failed to update'));
     }
   };
 
@@ -195,6 +288,14 @@ export default function AIChatScreen() {
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>{t('aiChatTitle', 'AI Chat')}</Text>
           <Text style={styles.headerSubtitle}>{t('poweredByGemini', 'Powered by Gemini')}</Text>
+        </View>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity onPress={toggleImportant} style={styles.iconButton}>
+            <Star size={22} color={isImportant ? "#F59E0B" : "#9CA3AF"} fill={isImportant ? "#F59E0B" : "none"} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/ai-chats-list')} style={styles.iconButton}>
+            <List size={22} color="#2563EB" />
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -384,5 +485,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#FFFFFF',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  iconButton: {
+    padding: 6,
   },
 });

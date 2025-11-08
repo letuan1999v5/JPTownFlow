@@ -46,7 +46,7 @@ export default function AIAssistantScreen() {
       titleKey: 'aiChatTitle',
       descKey: 'aiChatDesc',
       color: '#2563EB',
-      route: '/ai-chat',
+      route: '/ai-chats-list',
     },
     {
       id: 'japanese',
@@ -54,7 +54,7 @@ export default function AIAssistantScreen() {
       titleKey: 'japaneseLearnTitle',
       descKey: 'japaneseLearnDesc',
       color: '#10B981',
-      route: '/japanese-learning',
+      route: '/japanese-chats-list',
     },
     {
       id: 'browser',

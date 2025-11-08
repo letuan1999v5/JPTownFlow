@@ -15,11 +15,47 @@
       ]
     },
     {
+      "collectionGroup": "japaneseLearningChats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isImportant",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "lastUpdatedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "aiChats",
       "queryScope": "COLLECTION",
       "fields": [
         {
           "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "lastUpdatedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "aiChats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isImportant",
           "order": "ASCENDING"
         },
         {
