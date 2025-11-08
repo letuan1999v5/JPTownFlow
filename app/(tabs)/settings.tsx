@@ -10,6 +10,7 @@ import { useRouter } from 'expo-router';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebase/firebaseConfig';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
+import AuthScreen from '../../components/screens/AuthScreen';
 
 export default function SettingsScreen() {
   const { t } = useTranslation();
@@ -17,6 +18,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const [seeding, setSeeding] = useState(false);
   const [fixingRole, setFixingRole] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -223,7 +225,7 @@ export default function SettingsScreen() {
           <Text style={styles.sectionTitle}>{t('account', 'Account')}</Text>
           <TouchableOpacity
             style={styles.loginButton}
-            onPress={() => router.push('/auth')}
+            onPress={() => setShowAuthModal(true)}
           >
             <Text style={styles.loginButtonIcon}>🔑</Text>
             <View style={styles.loginButtonTextContainer}>
@@ -383,6 +385,16 @@ export default function SettingsScreen() {
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* Auth Modal */}
+      <Modal
+        visible={showAuthModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowAuthModal(false)}
+      >
+        <AuthScreen onClose={() => setShowAuthModal(false)} />
       </Modal>
     </ScrollView>
   );
