@@ -19,11 +19,13 @@ import { auth, db } from '../firebase/firebaseConfig'; // Import 'auth' và 'db'
 
 // Định nghĩa role types
 export type UserRole = 'user' | 'admin' | 'superadmin';
+export type SubscriptionType = 'FREE' | 'PRO' | 'ULTRA';
 
 // Định nghĩa kiểu cho các giá trị context
 interface AuthContextType {
   user: User | null;
   role: UserRole | null;
+  subscription: SubscriptionType | null;
   loading: boolean; // 'loading' này CHỈ dành cho các hành động (login/signup)
   error: string | null;
   signup: (email: string, password: string) => Promise<boolean>;
@@ -59,23 +61,27 @@ const mapAuthError = (errorCode: string): string => {
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<UserRole | null>(null);
+  const [subscription, setSubscription] = useState<SubscriptionType | null>(null);
   // SỬA: loading bắt đầu là false. Nó chỉ 'true' KHI nhấn nút.
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load user role from Firestore
+  // Load user role and subscription from Firestore
   const loadUserRole = async (uid: string) => {
     try {
       const userDoc = await getDoc(doc(db, 'users', uid));
       if (userDoc.exists()) {
         const userData = userDoc.data();
         setRole(userData.role || 'user');
+        setSubscription(userData.subscription || 'FREE');
       } else {
         setRole('user');
+        setSubscription('FREE');
       }
     } catch (error) {
       console.error('Error loading user role:', error);
       setRole('user');
+      setSubscription('FREE');
     }
   };
 
@@ -96,6 +102,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         await loadUserRole(currentUser.uid);
       } else {
         setRole(null);
+        setSubscription(null);
       }
     });
     // Hủy lắng nghe khi component unmount
@@ -162,6 +169,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const value = {
     user,
     role,
+    subscription,
     loading, // loading này chỉ active khi user nhấn login/signup
     error,
     signup,

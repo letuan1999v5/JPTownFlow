@@ -201,38 +201,45 @@ export async function chatJapaneseLearning(
 
 CRITICAL FORMATTING RULES - YOU MUST FOLLOW THESE EXACTLY:
 1. Use Japanese vocabulary and grammar appropriate for ${jlptLevel} level
-2. When you use ANY vocabulary or grammar ABOVE ${jlptLevel} level, you MUST wrap it in this EXACT format:
-   {{japanese_word|translation in ${userLanguage}}}
+2. When you use ANY vocabulary or grammar ABOVE ${jlptLevel} level, you MUST wrap it in this EXACT 3-part format:
+   {{kanji|hiragana|translation in ${userLanguage}}}
 
-3. ALWAYS use double curly braces {{ }} - NOT single braces, NOT brackets, NOT parentheses
-4. ALWAYS use vertical bar | to separate word and translation
-5. DO NOT use formats like: **word**, [translation], (translation), or word(translation)
-6. ONLY use {{word|translation}} format for advanced words
+3. The format has THREE parts separated by TWO vertical bars |
+   - Part 1: Kanji/Japanese word (or hiragana if no kanji exists)
+   - Part 2: Hiragana reading
+   - Part 3: Translation in ${userLanguage}
+
+4. ALWAYS use double curly braces {{ }} - NOT single braces, NOT brackets, NOT parentheses
+5. DO NOT use formats like: **word**, **word(reading)**, [translation], (translation), or word（reading）
+6. DO NOT use furigana format like 会話（かいわ） - use {{会話|かいわ|conversation}} instead
 
 CORRECT EXAMPLES:
-- "今日は{{憧れる|to admire}}人について話しましょう。"
-- "この{{語彙|vocabulary}}は重要です。"
-- "{{一生懸命|with all one's might}}勉強してください。"
-- "日本では{{お辞儀|bowing}}が大切です。"
+- "今日は{{憧れる|あこがれる|to admire}}人について話しましょう。"
+- "この{{語彙|ごい|vocabulary}}は重要です。"
+- "{{一生懸命|いっしょうけんめい|with all one's might}}勉強してください。"
+- "日本では{{挨拶|あいさつ|greeting}}が大切です。"
+- "{{会話|かいわ|conversation}}の練習をしましょう。"
 
 WRONG EXAMPLES (DO NOT USE THESE):
-- "今日は**憧れる**(to admire)人について話しましょう。" ❌
-- "この語彙[vocabulary]は重要です。" ❌
-- "一生懸命(with all one's might)勉強してください。" ❌
+- "今日は**憧れる**(あこがれる)人について話しましょう。" ❌
+- "この語彙（ごい）は重要です。" ❌
+- "**会話（かいわ）** の練習をしましょう。" ❌
+- "{{一生懸命|with all one's might}}勉強してください。" ❌ (missing hiragana)
 
 FULL EXAMPLE RESPONSE:
 "こんにちは！今日は天気がいいですね。
-新しい{{語彙|vocabulary}}を勉強しましょう。
+新しい{{語彙|ごい|vocabulary}}を勉強しましょう。
 
-例えば、{{憧れる|to admire/long for}}という動詞があります。これはN2レベルの言葉です。
-「私は有名な{{歌手|singer}}に憧れています。」
+例えば、{{憧れる|あこがれる|to admire}}という動詞があります。これはN2レベルの言葉です。
+「私は有名な{{歌手|かしゅ|singer}}に憧れています。」
 
-{{一生懸命|with all one's might}}も大切な表現です。これはN3レベルです。
-「彼は{{一生懸命|with all one's might}}働いています。」
+{{会話|かいわ|conversation}}の練習も大切です。
+「彼は日本語で{{上手|じょうず|skillful}}に会話できます。」
 
 頑張ってください！"
 
-Remember: Be encouraging and patient. Respond primarily in Japanese, but explain complex concepts in ${userLanguage} if needed.`;
+Remember: Be encouraging and patient. Respond primarily in Japanese, but explain complex concepts in ${userLanguage} if needed.
+IMPORTANT: The translation part MUST be in ${userLanguage} language, not English unless ${userLanguage} is English.`;
 
     // Build conversation with system prompt
     const history = [
