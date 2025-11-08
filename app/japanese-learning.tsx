@@ -23,6 +23,7 @@ import { doc, setDoc, getDoc, Timestamp, collection, query, where, getDocs } fro
 import { db } from '../firebase/firebaseConfig';
 
 type JLPTLevel = 'N1' | 'N2' | 'N3' | 'N4' | 'N5';
+type TranslationLanguage = 'ja' | 'en' | 'vi' | 'zh' | 'ko' | 'pt' | 'es' | 'fil' | 'th' | 'id';
 
 export default function JapaneseLearningScreen() {
   const { t, i18n } = useTranslation();
@@ -38,6 +39,9 @@ export default function JapaneseLearningScreen() {
     typeof chatId === 'string' ? chatId : null
   );
   const [jlptLevel, setJlptLevel] = useState<JLPTLevel>('N5');
+  const [translationLanguage, setTranslationLanguage] = useState<TranslationLanguage>(
+    i18n.language as TranslationLanguage
+  );
   const [showLevelModal, setShowLevelModal] = useState(false);
   const [isImportant, setIsImportant] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -58,6 +62,19 @@ export default function JapaneseLearningScreen() {
     N2: t('jlptN2', 'Upper Intermediate - Business and academic'),
     N1: t('jlptN1', 'Advanced - Native-like fluency'),
   };
+
+  const translationLanguages: { code: TranslationLanguage; name: string; flag: string }[] = [
+    { code: 'en', name: 'English', flag: '🇬🇧' },
+    { code: 'vi', name: 'Tiếng Việt', flag: '🇻🇳' },
+    { code: 'ja', name: '日本語', flag: '🇯🇵' },
+    { code: 'zh', name: '中文', flag: '🇨🇳' },
+    { code: 'ko', name: '한국어', flag: '🇰🇷' },
+    { code: 'pt', name: 'Português', flag: '🇧🇷' },
+    { code: 'es', name: 'Español', flag: '🇪🇸' },
+    { code: 'fil', name: 'Filipino', flag: '🇵🇭' },
+    { code: 'th', name: 'ไทย', flag: '🇹🇭' },
+    { code: 'id', name: 'Bahasa Indonesia', flag: '🇮🇩' },
+  ];
 
   // Load chat history on mount
   useEffect(() => {
@@ -112,6 +129,9 @@ export default function JapaneseLearningScreen() {
         if (chatData.jlptLevel) {
           setJlptLevel(chatData.jlptLevel);
         }
+        if (chatData.translationLanguage) {
+          setTranslationLanguage(chatData.translationLanguage);
+        }
         setIsImportant(chatData.isImportant || false);
       }
     } catch (error) {
@@ -157,6 +177,7 @@ export default function JapaneseLearningScreen() {
         title: title,
         messages: updatedMessages,
         jlptLevel: currentLevel,
+        translationLanguage: translationLanguage,
         isImportant: isImportant,
         createdAt: existingData?.createdAt || now,
         lastUpdatedAt: now,
@@ -239,7 +260,7 @@ export default function JapaneseLearningScreen() {
       const response = await chatJapaneseLearning(
         [...messages, userMessage],
         jlptLevel,
-        i18n.language
+        translationLanguage
       );
 
       const assistantMessage: ChatMessage = {
@@ -265,7 +286,6 @@ export default function JapaneseLearningScreen() {
 
   const handleLevelChange = (level: JLPTLevel) => {
     setJlptLevel(level);
-    setShowLevelModal(false);
 
     // Add system message about level change
     const levelChangeMessage: ChatMessage = {
@@ -273,6 +293,18 @@ export default function JapaneseLearningScreen() {
       content: `レベルを ${level} に変更しました。\n(Changed level to ${level})`,
     };
     setMessages((prev) => [...prev, levelChangeMessage]);
+  };
+
+  const handleTranslationLanguageChange = (langCode: TranslationLanguage) => {
+    setTranslationLanguage(langCode);
+
+    // Add system message about language change
+    const langName = translationLanguages.find(l => l.code === langCode)?.name || langCode;
+    const langChangeMessage: ChatMessage = {
+      role: 'assistant',
+      content: `翻訳言語を ${langName} に変更しました。\n(Changed translation language to ${langName})`,
+    };
+    setMessages((prev) => [...prev, langChangeMessage]);
   };
 
   // Show subscription required message if no subscription
@@ -322,7 +354,9 @@ export default function JapaneseLearningScreen() {
         </TouchableOpacity>
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>{t('japaneseLearnTitle', 'Learn Japanese')}</Text>
-          <Text style={styles.headerSubtitle}>JLPT {jlptLevel} Level</Text>
+          <Text style={styles.headerSubtitle}>
+            JLPT {jlptLevel} • {translationLanguages.find(l => l.code === translationLanguage)?.flag} {translationLanguages.find(l => l.code === translationLanguage)?.name}
+          </Text>
         </View>
         <View style={styles.headerButtons}>
           <TouchableOpacity onPress={toggleImportant} style={styles.iconButton}>
@@ -390,7 +424,7 @@ export default function JapaneseLearningScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Level Selection Modal */}
+      {/* Chat Settings Modal */}
       <Modal
         visible={showLevelModal}
         animationType="slide"
@@ -399,8 +433,10 @@ export default function JapaneseLearningScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{t('selectJLPTLevel', 'Select JLPT Level')}</Text>
+            <Text style={styles.modalTitle}>{t('chatSettings', 'Chat Settings')}</Text>
 
+            {/* JLPT Level Section */}
+            <Text style={styles.sectionTitle}>{t('jlptLevel', 'JLPT Level')}</Text>
             {levels.map((level) => (
               <TouchableOpacity
                 key={level}
@@ -417,6 +453,26 @@ export default function JapaneseLearningScreen() {
                 {jlptLevel === level && <Text style={styles.checkmark}>✓</Text>}
               </TouchableOpacity>
             ))}
+
+            {/* Translation Language Section */}
+            <Text style={[styles.sectionTitle, { marginTop: 24 }]}>{t('translationLanguage', 'Translation Language')}</Text>
+            <ScrollView style={styles.languageScrollView}>
+              {translationLanguages.map((lang) => (
+                <TouchableOpacity
+                  key={lang.code}
+                  style={[
+                    styles.levelOption,
+                    translationLanguage === lang.code && styles.levelOptionSelected,
+                  ]}
+                  onPress={() => handleTranslationLanguageChange(lang.code)}
+                >
+                  <View style={styles.levelOptionContent}>
+                    <Text style={styles.levelName}>{lang.flag} {lang.name}</Text>
+                  </View>
+                  {translationLanguage === lang.code && <Text style={styles.checkmark}>✓</Text>}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
 
             <TouchableOpacity
               style={styles.modalCloseButton}
@@ -556,6 +612,15 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     marginBottom: 20,
     textAlign: 'center',
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 12,
+  },
+  languageScrollView: {
+    maxHeight: 200,
   },
   levelOption: {
     flexDirection: 'row',
