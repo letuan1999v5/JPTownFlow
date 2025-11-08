@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Text, TouchableOpacity, StyleSheet, View, Modal } from 'react-native';
 import { BookmarkPlus } from 'lucide-react-native';
+import { useTranslation } from 'react-i18next';
 
 export interface TranslatableWord {
   kanji: string;
@@ -17,6 +18,7 @@ interface TranslatableTextProps {
 }
 
 export default function TranslatableText({ text, textStyle, onSaveWord, jlptLevel }: TranslatableTextProps) {
+  const { t } = useTranslation();
   const [selectedWord, setSelectedWord] = useState<TranslatableWord | null>(null);
 
   const handleSaveWord = () => {
@@ -106,7 +108,7 @@ export default function TranslatableText({ text, textStyle, onSaveWord, jlptLeve
                     onPress={handleSaveWord}
                   >
                     <BookmarkPlus size={20} color="#10B981" />
-                    <Text style={styles.saveButtonText}>Save to Notebook</Text>
+                    <Text style={styles.saveButtonText}>{t('saveToNotebook', 'Save to Notebook')}</Text>
                   </TouchableOpacity>
                 </>
               )}
