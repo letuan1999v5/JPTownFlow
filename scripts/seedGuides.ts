@@ -5,11 +5,12 @@
  * You can run this from a development environment or admin panel.
  */
 
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig';
 import { GuideType } from '../types/guide';
 
 interface GuideData {
+  id: string; // Fixed ID for the guide
   title: {
     vi: string;
     en: string;
@@ -33,6 +34,7 @@ interface GuideData {
 const SAMPLE_GUIDES: GuideData[] = [
   // FREE GUIDES
   {
+    id: 'guide-mynumber-registration',
     title: {
       vi: 'Hướng dẫn đăng ký Thẻ My Number',
       en: 'My Number Card Registration Guide',
@@ -160,6 +162,7 @@ After 1 month, you'll receive notification to pick up at ward office.
     category: 'mynumber',
   },
   {
+    id: 'guide-visa-renewal',
     title: {
       vi: 'Cách gia hạn Visa tại Nhật',
       en: 'How to Renew Your Visa in Japan',
@@ -352,6 +355,7 @@ If rejected, you can:
 
   // PREMIUM GUIDES
   {
+    id: 'guide-shopping-tips',
     title: {
       vi: 'Mẹo mua thực phẩm ngon rẻ tại siêu thị Nhật',
       en: 'Tips for Buying Fresh Food Cheaply at Japanese Supermarkets',
@@ -611,6 +615,7 @@ Good items to buy in bulk:
     category: 'shopping',
   },
   {
+    id: 'guide-transport-savings',
     title: {
       vi: 'Mẹo sử dụng tàu điện tiết kiệm chi phí',
       en: 'Money-Saving Train Travel Tips',
@@ -932,19 +937,41 @@ export const seedGuides = async () => {
   try {
     console.log('Starting to seed guides...');
 
-    const guidesRef = collection(db, 'guides');
+    let addedCount = 0;
+    let updatedCount = 0;
 
     for (const guide of SAMPLE_GUIDES) {
-      const docRef = await addDoc(guidesRef, {
-        ...guide,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      const { id, ...guideData } = guide;
+      const guideRef = doc(db, 'guides', id);
 
-      console.log(`✅ Added guide: ${guide.title.en} (ID: ${docRef.id})`);
+      // Check if guide already exists
+      const existingGuide = await getDoc(guideRef);
+
+      if (existingGuide.exists()) {
+        // Update existing guide
+        await setDoc(
+          guideRef,
+          {
+            ...guideData,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+        console.log(`🔄 Updated guide: ${guide.title.en} (ID: ${id})`);
+        updatedCount++;
+      } else {
+        // Create new guide
+        await setDoc(guideRef, {
+          ...guideData,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        console.log(`✅ Added guide: ${guide.title.en} (ID: ${id})`);
+        addedCount++;
+      }
     }
 
-    console.log(`\n✨ Successfully seeded ${SAMPLE_GUIDES.length} guides!`);
+    console.log(`\n✨ Seed complete! Added: ${addedCount}, Updated: ${updatedCount}`);
     return true;
   } catch (error) {
     console.error('❌ Error seeding guides:', error);
