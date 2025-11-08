@@ -15,11 +15,18 @@ interface LanguageItem {
 
 // --- COMPONENT ---
 
-// 1. Gán kiểu cho mảng items
+// 1. Gán kiểu cho mảng items - Top 10 languages in Japan
 const languageItems: LanguageItem[] = [
   { label: '🇯🇵 日本語', value: 'ja' },
   { label: '🇬🇧 English', value: 'en' },
   { label: '🇻🇳 Tiếng Việt', value: 'vi' },
+  { label: '🇨🇳 中文', value: 'zh' },
+  { label: '🇰🇷 한국어', value: 'ko' },
+  { label: '🇧🇷 Português', value: 'pt' },
+  { label: '🇪🇸 Español', value: 'es' },
+  { label: '🇵🇭 Filipino', value: 'fil' },
+  { label: '🇹🇭 ไทย', value: 'th' },
+  { label: '🇮🇩 Bahasa Indonesia', value: 'id' },
 ];
 
 const LanguageSwitcher: React.FC = () => {
