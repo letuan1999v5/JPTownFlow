@@ -315,4 +315,20 @@
   "pleaseEnterQuestion": "Please enter a question.",
   "answerError": "Failed to get answer. Please try again.",
   "close": "Close"
+,
+
+  "pleaseEnterUrl": "Please enter a URL",
+  "invalidUrl": "Please enter a valid URL",
+  "openInBrowser": "Open in Browser",
+  "fetchContent": "Fetch Content",
+  "contentReady": "Content Ready",
+  "contentLength": "Content length",
+  "characters": "characters",
+  "aiActions": "AI Actions",
+  "summarizeDesc": "Get AI summary of this page",
+  "askDesc": "Ask AI about this page",
+  "howToUse": "How to Use",
+  "browserInstructions": "1. Enter a URL\n2. Click \"Open in Browser\" to view the page\n3. Click \"Fetch Content\" to enable AI features\n4. Use AI to summarize or ask questions about the page",
+  "contentFetched": "Content fetched! You can now summarize or ask questions.",
+  "fetchError": "Failed to fetch content. The website may not allow access."
 }
