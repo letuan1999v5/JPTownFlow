@@ -278,6 +278,9 @@
 ,
 
   "aiAssistantTab": "AI Assistant",
+  "guidesTab": "가이드",
+  "premiumTab": "프리미엄",
+  "settingsTab": "설정",
   "aiAssistantTitle": "AI Assistant",
   "aiAssistantSubtitle": "Powered by Google Gemini",
   "aboutAI": "About AI Assistant",

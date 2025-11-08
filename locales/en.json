@@ -277,6 +277,9 @@
   "loginToSubscribe": "Login to Subscribe",
 
   "aiAssistantTab": "AI Assistant",
+  "guidesTab": "Guides",
+  "premiumTab": "Premium",
+  "settingsTab": "Settings",
   "aiAssistantTitle": "AI Assistant",
   "aiAssistantSubtitle": "Powered by Google Gemini",
   "aboutAI": "About AI Assistant",

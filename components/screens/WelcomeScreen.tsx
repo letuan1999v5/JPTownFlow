@@ -476,10 +476,12 @@ const WelcomeScreen = ({ appState, onLocationSelect }: WelcomeScreenProps) => {
                 </View>
               )}
   
-              {/* Status Display */}
-              <View style={styles.bottomStatusOuterContainer}>
-                <StatusDisplay status={t(status, { count: statusCount })} error={null} />
-              </View>
+              {/* Status Display - Hide when idle */}
+              {status !== 'idle' && (
+                <View style={styles.bottomStatusOuterContainer}>
+                  <StatusDisplay status={t(status, { count: statusCount })} error={null} />
+                </View>
+              )}
             </ScrollView>
           </TouchableWithoutFeedback>
         </SafeAreaView>
@@ -547,7 +549,7 @@ const styles = StyleSheet.create({
     color: '#2563EB',
     fontSize: 12,
   },
-  title: { fontSize: 24, fontWeight: 'bold', color: '#1F2937', textAlign: 'center' },
+  title: { fontSize: 24, fontWeight: 'bold', color: '#1F2937', textAlign: 'center', marginTop: 50 },
   subtitle: { fontSize: 16, color: '#4B5563', marginTop: 8, textAlign: 'center' },
   card: {
     width: '100%',

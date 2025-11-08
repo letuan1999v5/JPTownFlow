@@ -278,6 +278,9 @@
 ,
 
   "aiAssistantTab": "AI Assistant",
+  "guidesTab": "คู่มือ",
+  "premiumTab": "พรีเมียม",
+  "settingsTab": "การตั้งค่า",
   "aiAssistantTitle": "AI Assistant",
   "aiAssistantSubtitle": "Powered by Google Gemini",
   "aboutAI": "About AI Assistant",
