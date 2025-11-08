@@ -11,7 +11,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../../config/firebase';
+import { db } from '../../firebase/firebaseConfig';
 import { Guide } from '../../types/guide';
 import { useSubscription } from '../../context/SubscriptionContext';
 

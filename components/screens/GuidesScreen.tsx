@@ -14,7 +14,7 @@ import { useSubscription } from '../../context/SubscriptionContext';
 import { useAuth } from '../../context/AuthContext';
 import { Guide, GUIDE_CATEGORIES } from '../../types/guide';
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
-import { db } from '../../config/firebase';
+import { db } from '../../firebase/firebaseConfig';
 import { useRouter } from 'expo-router';
 
 export const GuidesScreen: React.FC = () => {
