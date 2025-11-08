@@ -65,6 +65,9 @@ export default function WebBrowserScreen() {
   const [aiLoading, setAiLoading] = useState(false);
   const [pageContent, setPageContent] = useState('');
 
+  // Ref to store content fetch resolver
+  const contentResolverRef = useRef<((content: string) => void) | null>(null);
+
   // Animation for chat panel
   const chatHeight = useRef(new Animated.Value(CHAT_MIN_HEIGHT)).current;
 
@@ -115,25 +118,70 @@ export default function WebBrowserScreen() {
     setUrl('https://www.google.com');
   };
 
-  // Fetch page content from WebView
-  const fetchPageContent = async () => {
-    if (webViewRef.current) {
+  // Fetch page content from WebView with Promise
+  const fetchPageContent = (): Promise<string> => {
+    return new Promise((resolve) => {
+      if (!webViewRef.current) {
+        resolve('No content available - WebView not loaded');
+        return;
+      }
+
+      // Store resolver in ref so handleWebViewMessage can call it
+      contentResolverRef.current = resolve;
+
+      // Set timeout to resolve with error if content fetch takes too long
+      const timeoutId = setTimeout(() => {
+        if (contentResolverRef.current) {
+          contentResolverRef.current('No content available - Request timeout. Please try again.');
+          contentResolverRef.current = null;
+        }
+      }, 3000);
+
       // Inject JavaScript to get page text content
       const script = `
         (function() {
-          return document.body.innerText || document.body.textContent;
+          try {
+            const text = document.body.innerText || document.body.textContent || '';
+            const content = text.substring(0, 15000);
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'PAGE_CONTENT',
+              content: content || 'Empty page'
+            }));
+          } catch (e) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'PAGE_CONTENT',
+              content: 'Error extracting content: ' + e.message
+            }));
+          }
         })();
+        true;
       `;
 
       webViewRef.current.injectJavaScript(script);
-    }
+    });
   };
 
   // Handle message from WebView
   const handleWebViewMessage = (event: any) => {
-    const content = event.nativeEvent.data;
-    if (content) {
-      setPageContent(content.substring(0, 15000));
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+
+      // Handle content fetch response
+      if (data.type === 'PAGE_CONTENT' && data.content) {
+        setPageContent(data.content);
+
+        // Resolve pending promise if exists
+        if (contentResolverRef.current) {
+          contentResolverRef.current(data.content);
+          contentResolverRef.current = null;
+        }
+      }
+    } catch (e) {
+      // Not JSON - might be old format, just store it
+      const content = event.nativeEvent.data;
+      if (content && typeof content === 'string') {
+        setPageContent(content.substring(0, 15000));
+      }
     }
   };
 
@@ -155,25 +203,12 @@ export default function WebBrowserScreen() {
     }
 
     try {
-      // Fetch page content if not already fetched
-      if (!pageContent) {
-        // Inject script to get page content
-        const script = `
-          (function() {
-            const text = document.body.innerText || document.body.textContent;
-            window.ReactNativeWebView.postMessage(text);
-            return text;
-          })();
-        `;
-        webViewRef.current?.injectJavaScript(script);
+      // Always fetch fresh page content before sending to AI
+      const content = await fetchPageContent();
 
-        // Wait a bit for content to be fetched
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-
-      // Get AI response
+      // Get AI response with actual content
       const response = await askAboutWebContent(
-        pageContent || 'No content available',
+        content,
         userMessage.content,
         i18n.language
       );
