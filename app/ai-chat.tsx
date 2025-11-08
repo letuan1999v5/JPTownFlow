@@ -22,8 +22,11 @@ import { db } from '../firebase/firebaseConfig';
 export default function AIChatScreen() {
   const { t, i18n } = useTranslation();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, subscription } = useAuth();
   const scrollViewRef = useRef<ScrollView>(null);
+
+  // Check subscription status
+  const hasSubscription = subscription === 'PRO' || subscription === 'ULTRA';
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -136,6 +139,41 @@ export default function AIChatScreen() {
       setLoading(false);
     }
   };
+
+  // Show subscription required message if no subscription
+  if (!user || !hasSubscription) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <ArrowLeft size={24} color="#1F2937" />
+          </TouchableOpacity>
+          <View style={styles.headerContent}>
+            <Text style={styles.headerTitle}>{t('aiChatTitle', 'AI Chat')}</Text>
+          </View>
+        </View>
+        <View style={styles.subscriptionRequired}>
+          <Text style={styles.lockIcon}>🔒</Text>
+          <Text style={styles.subscriptionTitle}>
+            {!user ? t('loginRequired', 'Login Required') : t('subscriptionRequired', 'Subscription Required')}
+          </Text>
+          <Text style={styles.subscriptionMessage}>
+            {!user
+              ? t('aiLoginMessage', 'Please login to use AI Assistant features.')
+              : t('aiSubscriptionMessage', 'AI Assistant features require a PRO or ULTRA subscription. Please upgrade to continue.')}
+          </Text>
+          <TouchableOpacity
+            style={styles.upgradeButton}
+            onPress={() => router.push('/(tabs)/premium')}
+          >
+            <Text style={styles.upgradeButtonText}>
+              {!user ? t('login', 'Login') : t('upgrade', 'Upgrade')}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -305,5 +343,40 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     backgroundColor: '#9CA3AF',
+  },
+  subscriptionRequired: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  lockIcon: {
+    fontSize: 64,
+    marginBottom: 24,
+  },
+  subscriptionTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  subscriptionMessage: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 32,
+  },
+  upgradeButton: {
+    backgroundColor: '#2563EB',
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 12,
+  },
+  upgradeButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
 });

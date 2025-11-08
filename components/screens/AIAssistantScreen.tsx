@@ -1,13 +1,43 @@
 // components/screens/AIAssistantScreen.tsx
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
-import { MessageCircle, BookOpen, Globe } from 'lucide-react-native';
+import { MessageCircle, BookOpen, Globe, Lock } from 'lucide-react-native';
+import { useAuth } from '../../context/AuthContext';
 
 export default function AIAssistantScreen() {
   const { t } = useTranslation();
   const router = useRouter();
+  const { user, subscription } = useAuth();
+
+  // Check subscription status
+  const hasSubscription = subscription === 'PRO' || subscription === 'ULTRA';
+
+  const handleFeaturePress = (route: string) => {
+    if (!user) {
+      Alert.alert(
+        t('loginRequired', 'Login Required'),
+        t('aiLoginMessage', 'Please login to use AI Assistant features.'),
+        [{ text: t('ok', 'OK') }]
+      );
+      return;
+    }
+
+    if (!hasSubscription) {
+      Alert.alert(
+        t('subscriptionRequired', 'Subscription Required'),
+        t('aiSubscriptionMessage', 'AI Assistant features require a PRO or ULTRA subscription. Please upgrade to continue.'),
+        [
+          { text: t('cancel', 'Cancel'), style: 'cancel' },
+          { text: t('upgrade', 'Upgrade'), onPress: () => router.push('/(tabs)/premium') },
+        ]
+      );
+      return;
+    }
+
+    router.push(route as any);
+  };
 
   const features = [
     {
@@ -46,17 +76,25 @@ export default function AIAssistantScreen() {
       <View style={styles.featuresContainer}>
         {features.map((feature) => {
           const Icon = feature.icon;
+          const isLocked = !user || !hasSubscription;
           return (
             <TouchableOpacity
               key={feature.id}
-              style={[styles.featureCard, { borderColor: feature.color }]}
-              onPress={() => router.push(feature.route as any)}
+              style={[
+                styles.featureCard,
+                { borderColor: feature.color },
+                isLocked && styles.lockedCard,
+              ]}
+              onPress={() => handleFeaturePress(feature.route)}
             >
               <View style={[styles.iconContainer, { backgroundColor: feature.color + '20' }]}>
                 <Icon size={40} color={feature.color} />
               </View>
               <View style={styles.featureContent}>
-                <Text style={styles.featureTitle}>{t(feature.titleKey, feature.titleKey)}</Text>
+                <Text style={styles.featureTitle}>
+                  {t(feature.titleKey, feature.titleKey)}
+                  {isLocked && ' 🔒'}
+                </Text>
                 <Text style={styles.featureDesc}>{t(feature.descKey, feature.descKey)}</Text>
               </View>
               <Text style={[styles.arrow, { color: feature.color }]}>→</Text>
@@ -106,6 +144,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
+  },
+  lockedCard: {
+    opacity: 0.6,
   },
   iconContainer: {
     width: 64,
