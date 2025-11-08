@@ -15,9 +15,10 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Send, Settings, Star, List } from 'lucide-react-native';
+import { ArrowLeft, Send, Settings, Star, List, BookOpen } from 'lucide-react-native';
 import { chatJapaneseLearning, ChatMessage } from '../services/geminiService';
-import TranslatableText from '../components/common/TranslatableText';
+import TranslatableText, { TranslatableWord } from '../components/common/TranslatableText';
+import SaveToNotebookModal from '../components/vocabulary/SaveToNotebookModal';
 import { useAuth } from '../context/AuthContext';
 import { doc, setDoc, getDoc, Timestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig';
@@ -44,6 +45,8 @@ export default function JapaneseLearningScreen() {
   );
   const [showLevelModal, setShowLevelModal] = useState(false);
   const [isImportant, setIsImportant] = useState(false);
+  const [showSaveWordModal, setShowSaveWordModal] = useState(false);
+  const [selectedWord, setSelectedWord] = useState<TranslatableWord | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
@@ -307,6 +310,11 @@ export default function JapaneseLearningScreen() {
     setMessages((prev) => [...prev, langChangeMessage]);
   };
 
+  const handleSaveWord = (word: TranslatableWord) => {
+    setSelectedWord(word);
+    setShowSaveWordModal(true);
+  };
+
   // Show subscription required message if no subscription
   if (!user || !hasSubscription) {
     return (
@@ -362,6 +370,9 @@ export default function JapaneseLearningScreen() {
           <TouchableOpacity onPress={toggleImportant} style={styles.iconButton}>
             <Star size={22} color={isImportant ? "#F59E0B" : "#9CA3AF"} fill={isImportant ? "#F59E0B" : "none"} />
           </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/vocabulary-notebooks')} style={styles.iconButton}>
+            <BookOpen size={22} color="#10B981" />
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => router.push('/japanese-chats-list')} style={styles.iconButton}>
             <List size={22} color="#2563EB" />
           </TouchableOpacity>
@@ -389,6 +400,8 @@ export default function JapaneseLearningScreen() {
               <TranslatableText
                 text={message.content}
                 textStyle={[styles.messageText, styles.assistantText]}
+                onSaveWord={handleSaveWord}
+                jlptLevel={jlptLevel}
               />
             ) : (
               <Text style={[styles.messageText, styles.userText]}>
@@ -483,6 +496,16 @@ export default function JapaneseLearningScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Save to Notebook Modal */}
+      {selectedWord && (
+        <SaveToNotebookModal
+          visible={showSaveWordModal}
+          onClose={() => setShowSaveWordModal(false)}
+          word={selectedWord}
+          jlptLevel={jlptLevel}
+        />
+      )}
     </KeyboardAvoidingView>
   );
 }
