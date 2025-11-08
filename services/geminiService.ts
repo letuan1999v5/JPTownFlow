@@ -6,6 +6,23 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 const API_KEY = process.env.EXPO_PUBLIC_GOOGLE_AI_API_KEY || '';
 const genAI = new GoogleGenerativeAI(API_KEY);
 
+// Map language codes to full language names for better AI understanding
+const getLanguageName = (languageCode: string): string => {
+  const languageMap: Record<string, string> = {
+    'ja': 'Japanese',
+    'en': 'English',
+    'vi': 'Vietnamese',
+    'zh': 'Chinese',
+    'ko': 'Korean',
+    'pt': 'Portuguese',
+    'es': 'Spanish',
+    'fil': 'Filipino',
+    'th': 'Thai',
+    'id': 'Indonesian',
+  };
+  return languageMap[languageCode] || 'English';
+};
+
 export interface GarbageAnalysisResult {
   itemName: string; // Tên loại rác nhận diện được
   category: string | null; // Phân loại (burnable, plastic, etc.)
@@ -196,18 +213,21 @@ export async function chatJapaneseLearning(
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
 
+    // Convert language code to full language name
+    const languageName = getLanguageName(userLanguage);
+
     // System prompt based on JLPT level
     const systemPrompt = `You are a Japanese language teacher helping a student at JLPT ${jlptLevel} level.
 
 CRITICAL FORMATTING RULES - YOU MUST FOLLOW THESE EXACTLY:
 1. Use Japanese vocabulary and grammar appropriate for ${jlptLevel} level
 2. When you use ANY vocabulary or grammar ABOVE ${jlptLevel} level, you MUST wrap it in this EXACT 3-part format:
-   {{kanji|hiragana|translation in ${userLanguage}}}
+   {{kanji|hiragana|translation in ${languageName}}}
 
 3. The format has THREE parts separated by TWO vertical bars |
    - Part 1: Kanji/Japanese word (or hiragana if no kanji exists)
    - Part 2: Hiragana reading
-   - Part 3: Translation in ${userLanguage}
+   - Part 3: Translation in ${languageName} (IMPORTANT: Must be in ${languageName}, NOT English)
 
 4. ALWAYS use double curly braces {{ }} - NOT single braces, NOT brackets, NOT parentheses
 5. DO NOT use formats like: **word**, **word(reading)**, [translation], (translation), or word（reading）
@@ -238,8 +258,9 @@ FULL EXAMPLE RESPONSE:
 
 頑張ってください！"
 
-Remember: Be encouraging and patient. Respond primarily in Japanese, but explain complex concepts in ${userLanguage} if needed.
-IMPORTANT: The translation part MUST be in ${userLanguage} language, not English unless ${userLanguage} is English.`;
+Remember: Be encouraging and patient. Respond primarily in Japanese, but explain complex concepts in ${languageName} if needed.
+CRITICAL: ALL translations in the {{kanji|hiragana|translation}} format MUST be in ${languageName} language.
+For example, if the language is Vietnamese, write {{会話|かいわ|hội thoại}}, NOT {{会話|かいわ|conversation}}.`;
 
     // Build conversation with system prompt
     const history = [
