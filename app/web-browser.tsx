@@ -91,8 +91,19 @@ export default function WebBrowserScreen() {
         finalUrl = `https://${finalUrl}`;
       }
     }
-    setCurrentUrl(finalUrl);
-    setUrl(finalUrl);
+
+    // Check if URL is a PDF file
+    if (finalUrl.toLowerCase().endsWith('.pdf') ||
+        finalUrl.toLowerCase().includes('.pdf?') ||
+        finalUrl.toLowerCase().includes('.pdf#')) {
+      // Use Mozilla PDF.js viewer for better compatibility
+      const viewerUrl = `https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodeURIComponent(finalUrl)}`;
+      setCurrentUrl(viewerUrl);
+      setUrl(finalUrl); // Keep original URL in address bar
+    } else {
+      setCurrentUrl(finalUrl);
+      setUrl(finalUrl);
+    }
   };
 
   const handleGoBack = () => {
@@ -122,10 +133,17 @@ export default function WebBrowserScreen() {
   const handleShouldStartLoadWithRequest = (request: any) => {
     const { url: requestUrl } = request;
 
+    // Don't intercept if it's already a viewer URL
+    if (requestUrl.includes('mozilla.github.io/pdf.js/web/viewer.html')) {
+      return true;
+    }
+
     // Check if it's a PDF file
-    if (requestUrl.toLowerCase().endsWith('.pdf') || requestUrl.toLowerCase().includes('.pdf?')) {
-      // Use Google Docs Viewer for PDF files
-      const viewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(requestUrl)}`;
+    if (requestUrl.toLowerCase().endsWith('.pdf') ||
+        requestUrl.toLowerCase().includes('.pdf?') ||
+        requestUrl.toLowerCase().includes('.pdf#')) {
+      // Use Mozilla PDF.js viewer for better compatibility
+      const viewerUrl = `https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodeURIComponent(requestUrl)}`;
       setCurrentUrl(viewerUrl);
       setUrl(requestUrl); // Keep original URL in address bar
       return false; // Prevent default navigation
