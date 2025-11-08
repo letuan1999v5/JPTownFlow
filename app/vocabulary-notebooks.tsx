@@ -87,7 +87,7 @@ export default function VocabularyNotebooksScreen() {
       setNotebooks(notebooksData);
     } catch (error) {
       console.error('Error loading notebooks:', error);
-      Alert.alert(t('error'), t('failedToLoadNotebooks', 'Failed to load notebooks'));
+      Alert.alert(t('error', 'Error'), t('failedToLoadNotebooks', 'Failed to load notebooks'));
     } finally {
       setLoading(false);
     }
@@ -96,7 +96,7 @@ export default function VocabularyNotebooksScreen() {
   const createNotebook = async () => {
     if (!user) return;
     if (!newNotebookTitle.trim()) {
-      Alert.alert(t('error'), t('pleaseEnterNotebookTitle', 'Please enter a notebook title'));
+      Alert.alert(t('error', 'Error'), t('pleaseEnterNotebookTitle', 'Please enter a notebook title'));
       return;
     }
 
@@ -105,7 +105,7 @@ export default function VocabularyNotebooksScreen() {
     if (notebooks.length >= limit) {
       Alert.alert(
         t('limitReached', 'Limit Reached'),
-        t('notebookLimitMessage', `You have reached the maximum of ${limit} notebooks. Please upgrade or delete an existing notebook.`),
+        t('notebookLimitMessage', 'You have reached the maximum of {limit} notebooks. Please upgrade or delete an existing notebook.').replace('{limit}', String(limit)),
         [
           { text: t('cancel', 'Cancel'), style: 'cancel' },
           { text: t('upgrade', 'Upgrade'), onPress: () => router.push('/(tabs)/premium') },
@@ -142,10 +142,10 @@ export default function VocabularyNotebooksScreen() {
       setNewNotebookTitle('');
       setShowCreateModal(false);
 
-      Alert.alert(t('success'), t('notebookCreated', 'Notebook created successfully'));
+      Alert.alert(t('success', 'Success'), t('notebookCreated', 'Notebook created successfully'));
     } catch (error) {
       console.error('Error creating notebook:', error);
-      Alert.alert(t('error'), t('failedToCreateNotebook', 'Failed to create notebook'));
+      Alert.alert(t('error', 'Error'), t('failedToCreateNotebook', 'Failed to create notebook'));
     } finally {
       setCreating(false);
     }
@@ -154,7 +154,7 @@ export default function VocabularyNotebooksScreen() {
   const deleteNotebook = async (notebookId: string, notebookTitle: string) => {
     Alert.alert(
       t('confirmDelete', 'Confirm Delete'),
-      t('deleteNotebookConfirm', `Are you sure you want to delete "${notebookTitle}"? All words in this notebook will be deleted.`),
+      t('deleteNotebookConfirm', 'Are you sure you want to delete "{title}"? All words in this notebook will be deleted.').replace('{title}', notebookTitle),
       [
         { text: t('cancel', 'Cancel'), style: 'cancel' },
         {
@@ -177,10 +177,10 @@ export default function VocabularyNotebooksScreen() {
               // Remove from local state
               setNotebooks(notebooks.filter(n => n.id !== notebookId));
 
-              Alert.alert(t('success'), t('notebookDeleted', 'Notebook deleted successfully'));
+              Alert.alert(t('success', 'Success'), t('notebookDeleted', 'Notebook deleted successfully'));
             } catch (error) {
               console.error('Error deleting notebook:', error);
-              Alert.alert(t('error'), t('failedToDeleteNotebook', 'Failed to delete notebook'));
+              Alert.alert(t('error', 'Error'), t('failedToDeleteNotebook', 'Failed to delete notebook'));
             }
           },
         },
@@ -216,7 +216,7 @@ export default function VocabularyNotebooksScreen() {
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>{t('vocabularyNotebooks', 'Vocabulary Notebooks')}</Text>
           <Text style={styles.headerSubtitle}>
-            {notebooks.length}/{notebookLimit} notebooks
+            {notebooks.length}/{notebookLimit} {t('notebooks', 'notebooks')}
           </Text>
         </View>
         <TouchableOpacity
@@ -269,7 +269,7 @@ export default function VocabularyNotebooksScreen() {
               <View style={styles.notebookInfo}>
                 <Text style={styles.notebookTitle}>{notebook.title}</Text>
                 <Text style={styles.notebookMeta}>
-                  {notebook.vocabularyCount} words • {new Date(notebook.lastUpdatedAt).toLocaleDateString()}
+                  {notebook.vocabularyCount} {t('words', 'words')} • {new Date(notebook.lastUpdatedAt).toLocaleDateString()}
                 </Text>
               </View>
               <TouchableOpacity

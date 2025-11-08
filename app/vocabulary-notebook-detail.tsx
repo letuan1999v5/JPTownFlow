@@ -84,14 +84,14 @@ export default function VocabularyNotebookDetailScreen() {
       const notebookSnap = await getDoc(notebookDocRef);
 
       if (!notebookSnap.exists()) {
-        Alert.alert(t('error'), t('notebookNotFound', 'Notebook not found'));
+        Alert.alert(t('error', 'Error'), t('notebookNotFound', 'Notebook not found'));
         router.back();
         return;
       }
 
       const notebookData = notebookSnap.data();
       if (notebookData.userId !== user.uid) {
-        Alert.alert(t('error'), t('notebookNotFound', 'Notebook not found'));
+        Alert.alert(t('error', 'Error'), t('notebookNotFound', 'Notebook not found'));
         router.back();
         return;
       }
@@ -130,7 +130,7 @@ export default function VocabularyNotebookDetailScreen() {
       setWords(wordsData);
     } catch (error) {
       console.error('Error loading notebook:', error);
-      Alert.alert(t('error'), t('failedToLoadNotebook', 'Failed to load notebook'));
+      Alert.alert(t('error', 'Error'), t('failedToLoadNotebook', 'Failed to load notebook'));
     } finally {
       setLoading(false);
     }
@@ -140,7 +140,7 @@ export default function VocabularyNotebookDetailScreen() {
     if (!user || !notebookId || !notebook) return;
 
     if (!newWordKanji.trim() || !newWordHiragana.trim() || !newWordTranslation.trim()) {
-      Alert.alert(t('error'), t('pleaseEnterAllFields', 'Please enter all fields'));
+      Alert.alert(t('error', 'Error'), t('pleaseEnterAllFields', 'Please enter all fields'));
       return;
     }
 
@@ -148,7 +148,7 @@ export default function VocabularyNotebookDetailScreen() {
     if (notebook.vocabularyCount >= WORDS_PER_NOTEBOOK_LIMIT) {
       Alert.alert(
         t('notebookFull', 'Notebook Full'),
-        t('notebookFullMessage', `This notebook has reached the maximum of ${WORDS_PER_NOTEBOOK_LIMIT} words.`)
+        t('notebookFullMessage', 'This notebook has reached the maximum of {limit} words.').replace('{limit}', String(WORDS_PER_NOTEBOOK_LIMIT))
       );
       return;
     }
@@ -215,10 +215,10 @@ export default function VocabularyNotebookDetailScreen() {
       setNewWordLevel('N5');
       setShowAddModal(false);
 
-      Alert.alert(t('success'), t('wordAdded', 'Word added successfully'));
+      Alert.alert(t('success', 'Success'), t('wordAdded', 'Word added successfully'));
     } catch (error) {
       console.error('Error adding word:', error);
-      Alert.alert(t('error'), t('failedToAddWord', 'Failed to add word'));
+      Alert.alert(t('error', 'Error'), t('failedToAddWord', 'Failed to add word'));
     } finally {
       setSaving(false);
     }
@@ -229,7 +229,7 @@ export default function VocabularyNotebookDetailScreen() {
 
     Alert.alert(
       t('confirmDelete', 'Confirm Delete'),
-      t('deleteWordConfirm', `Are you sure you want to delete "${kanji}"?`),
+      t('deleteWordConfirm', 'Are you sure you want to delete "{kanji}"?').replace('{kanji}', kanji),
       [
         { text: t('cancel', 'Cancel'), style: 'cancel' },
         {
@@ -255,10 +255,10 @@ export default function VocabularyNotebookDetailScreen() {
                 lastUpdatedAt: new Date(),
               });
 
-              Alert.alert(t('success'), t('wordDeleted', 'Word deleted successfully'));
+              Alert.alert(t('success', 'Success'), t('wordDeleted', 'Word deleted successfully'));
             } catch (error) {
               console.error('Error deleting word:', error);
-              Alert.alert(t('error'), t('failedToDeleteWord', 'Failed to delete word'));
+              Alert.alert(t('error', 'Error'), t('failedToDeleteWord', 'Failed to delete word'));
             }
           },
         },
@@ -324,7 +324,7 @@ export default function VocabularyNotebookDetailScreen() {
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>{notebook.title}</Text>
           <Text style={styles.headerSubtitle}>
-            {notebook.vocabularyCount}/{WORDS_PER_NOTEBOOK_LIMIT} words
+            {notebook.vocabularyCount}/{WORDS_PER_NOTEBOOK_LIMIT} {t('words', 'words')}
           </Text>
         </View>
         <View style={styles.headerActions}>

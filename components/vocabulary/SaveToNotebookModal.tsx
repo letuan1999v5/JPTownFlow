@@ -90,7 +90,7 @@ export default function SaveToNotebookModal({
       setNotebooks(notebooksData);
     } catch (error) {
       console.error('Error loading notebooks:', error);
-      Alert.alert(t('error'), t('failedToLoadNotebooks', 'Failed to load notebooks'));
+      Alert.alert(t('error', 'Error'), t('failedToLoadNotebooks', 'Failed to load notebooks'));
     } finally {
       setLoading(false);
     }
@@ -99,7 +99,7 @@ export default function SaveToNotebookModal({
   const createNotebook = async () => {
     if (!user) return;
     if (!newNotebookTitle.trim()) {
-      Alert.alert(t('error'), t('pleaseEnterNotebookTitle', 'Please enter a notebook title'));
+      Alert.alert(t('error', 'Error'), t('pleaseEnterNotebookTitle', 'Please enter a notebook title'));
       return;
     }
 
@@ -108,7 +108,7 @@ export default function SaveToNotebookModal({
     if (notebooks.length >= limit) {
       Alert.alert(
         t('limitReached', 'Limit Reached'),
-        t('notebookLimitMessage', `You have reached the maximum of ${limit} notebooks. Please upgrade or delete an existing notebook.`),
+        t('notebookLimitMessage', 'You have reached the maximum of {limit} notebooks. Please upgrade or delete an existing notebook.').replace('{limit}', String(limit)),
         [
           { text: t('cancel', 'Cancel'), style: 'cancel' },
           { text: t('upgrade', 'Upgrade'), onPress: () => {
@@ -152,7 +152,7 @@ export default function SaveToNotebookModal({
       await saveWordToNotebook(notebookId);
     } catch (error) {
       console.error('Error creating notebook:', error);
-      Alert.alert(t('error'), t('failedToCreateNotebook', 'Failed to create notebook'));
+      Alert.alert(t('error', 'Error'), t('failedToCreateNotebook', 'Failed to create notebook'));
     } finally {
       setSaving(false);
     }
@@ -174,7 +174,7 @@ export default function SaveToNotebookModal({
         if (currentCount >= WORDS_PER_NOTEBOOK_LIMIT) {
           Alert.alert(
             t('notebookFull', 'Notebook Full'),
-            t('notebookFullMessage', `This notebook has reached the maximum of ${WORDS_PER_NOTEBOOK_LIMIT} words.`)
+            t('notebookFullMessage', 'This notebook has reached the maximum of {limit} words.').replace('{limit}', String(WORDS_PER_NOTEBOOK_LIMIT))
           );
           return;
         }
@@ -218,14 +218,14 @@ export default function SaveToNotebookModal({
         }, { merge: true });
 
         Alert.alert(
-          t('success'),
+          t('success', 'Success'),
           t('wordSavedToNotebook', 'Word saved to notebook successfully!')
         );
         onClose();
       }
     } catch (error) {
       console.error('Error saving word:', error);
-      Alert.alert(t('error'), t('failedToSaveWord', 'Failed to save word'));
+      Alert.alert(t('error', 'Error'), t('failedToSaveWord', 'Failed to save word'));
     } finally {
       setSaving(false);
     }
@@ -336,7 +336,7 @@ export default function SaveToNotebookModal({
                   <View style={styles.notebookItemContent}>
                     <Text style={styles.notebookTitle}>{notebook.title}</Text>
                     <Text style={styles.notebookCount}>
-                      {notebook.vocabularyCount}/{WORDS_PER_NOTEBOOK_LIMIT} words
+                      {notebook.vocabularyCount}/{WORDS_PER_NOTEBOOK_LIMIT} {t('words', 'words')}
                     </Text>
                   </View>
                   <View style={styles.notebookIcon}>

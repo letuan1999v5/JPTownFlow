@@ -255,6 +255,24 @@ export default function SettingsScreen() {
         </View>
       )}
 
+      {/* Vocabulary Notebooks - Only for logged in users */}
+      {user && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('learning', 'Learning')}</Text>
+          <TouchableOpacity
+            style={styles.optionButton}
+            onPress={() => router.push('/vocabulary-notebooks')}
+          >
+            <Text style={styles.optionButtonIcon}>📚</Text>
+            <View style={styles.optionButtonTextContainer}>
+              <Text style={styles.optionButtonTitle}>{t('vocabularyNotebooks', 'Vocabulary Notebooks')}</Text>
+              <Text style={styles.optionButtonDescription}>{t('manageYourVocabularyNotebooks', 'Manage your vocabulary notebooks')}</Text>
+            </View>
+            <Text style={styles.optionButtonArrow}>→</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Admin Panel Section - Only for super admin */}
       {isSuperAdmin && (
         <View style={styles.section}>
