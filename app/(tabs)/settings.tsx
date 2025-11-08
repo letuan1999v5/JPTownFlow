@@ -7,16 +7,22 @@ import { UserIcon } from '../../components/icons/Icons';
 import { useAuth } from '../../context/AuthContext';
 import { seedGuides } from '../../scripts/seedGuides';
 import { useRouter } from 'expo-router';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '../../firebase/firebaseConfig';
 
 export default function SettingsScreen() {
   const { t } = useTranslation();
-  const { user, role, logout } = useAuth();
+  const { user, role, logout, refreshRole } = useAuth();
   const router = useRouter();
   const [seeding, setSeeding] = useState(false);
+  const [fixingRole, setFixingRole] = useState(false);
 
   // Check if user is admin or superadmin
   const isAdmin = role === 'admin' || role === 'superadmin';
   const isSuperAdmin = role === 'superadmin';
+
+  // Check if this user should be superadmin but role is missing
+  const shouldBeSuperAdmin = user?.email === 'letuan1999@gmail.com' && !role;
 
   const handleLogout = async () => {
     Alert.alert(
@@ -34,6 +40,28 @@ export default function SettingsScreen() {
         },
       ]
     );
+  };
+
+  const handleFixRole = async () => {
+    if (!user) return;
+
+    try {
+      setFixingRole(true);
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+        role: 'superadmin',
+      });
+
+      // Refresh role
+      await refreshRole();
+
+      setFixingRole(false);
+      Alert.alert('Success!', 'Your role has been updated to Super Admin! Please restart the app.');
+    } catch (error) {
+      setFixingRole(false);
+      console.error('Error fixing role:', error);
+      Alert.alert('Error', `Failed to update role: ${error}`);
+    }
   };
 
   const handleSeedGuides = async () => {
@@ -102,6 +130,30 @@ export default function SettingsScreen() {
               onPress={handleLogout}
             >
               <Text style={styles.logoutButtonText}>{t('logout', 'Logout')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* Fix Role Section - Only for letuan1999@gmail.com without role */}
+      {shouldBeSuperAdmin && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>⚠️ Role Setup Required</Text>
+          <View style={styles.warningCard}>
+            <Text style={styles.warningTitle}>Missing Super Admin Role</Text>
+            <Text style={styles.warningDescription}>
+              Your account (letuan1999@gmail.com) should be a Super Admin, but the role field is missing in the database.
+            </Text>
+            <TouchableOpacity
+              style={[styles.fixRoleButton, fixingRole && styles.fixRoleButtonDisabled]}
+              onPress={handleFixRole}
+              disabled={fixingRole}
+            >
+              {fixingRole ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.fixRoleButtonText}>🔧 Fix Role Now</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -229,6 +281,41 @@ const styles = StyleSheet.create({
   },
   logoutButtonText: {
     color: '#DC2626',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+
+  // Warning Card
+  warningCard: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 2,
+    borderColor: '#F59E0B',
+  },
+  warningTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#92400E',
+    marginBottom: 8,
+  },
+  warningDescription: {
+    fontSize: 14,
+    color: '#78350F',
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  fixRoleButton: {
+    backgroundColor: '#F59E0B',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  fixRoleButtonDisabled: {
+    backgroundColor: '#9CA3AF',
+  },
+  fixRoleButtonText: {
+    color: '#FFFFFF',
     fontWeight: '600',
     fontSize: 16,
   },
