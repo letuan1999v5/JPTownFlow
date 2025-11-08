@@ -16,12 +16,17 @@ import {
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Send, Settings } from 'lucide-react-native';
 import { chatJapaneseLearning, ChatMessage } from '../services/geminiService';
+import TranslatableText from '../components/common/TranslatableText';
+import { useAuth } from '../context/AuthContext';
+import { collection, addDoc, query, where, getDocs, orderBy, limit, Timestamp } from 'firebase/firestore';
+import { db } from '../firebase/firebaseConfig';
 
 type JLPTLevel = 'N1' | 'N2' | 'N3' | 'N4' | 'N5';
 
 export default function JapaneseLearningScreen() {
   const { t, i18n } = useTranslation();
   const router = useRouter();
+  const { user } = useAuth();
   const scrollViewRef = useRef<ScrollView>(null);
 
   const [jlptLevel, setJlptLevel] = useState<JLPTLevel>('N5');
@@ -34,6 +39,7 @@ export default function JapaneseLearningScreen() {
   ]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [chatHistoryLoaded, setChatHistoryLoaded] = useState(false);
 
   const levels: JLPTLevel[] = ['N5', 'N4', 'N3', 'N2', 'N1'];
   const levelDescriptions: Record<JLPTLevel, string> = {
@@ -44,11 +50,75 @@ export default function JapaneseLearningScreen() {
     N1: t('jlptN1', 'Advanced - Native-like fluency'),
   };
 
+  // Load chat history on mount
+  useEffect(() => {
+    if (user && !chatHistoryLoaded) {
+      loadChatHistory();
+    }
+  }, [user]);
+
+  // Auto-scroll to bottom when messages change
   useEffect(() => {
     setTimeout(() => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 100);
   }, [messages]);
+
+  // Load chat history from Firestore (last 30 days)
+  const loadChatHistory = async () => {
+    if (!user) return;
+
+    try {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      const q = query(
+        collection(db, 'japaneseLearningChats'),
+        where('userId', '==', user.uid),
+        where('createdAt', '>=', Timestamp.fromDate(thirtyDaysAgo)),
+        orderBy('createdAt', 'desc'),
+        limit(1)
+      );
+
+      const querySnapshot = await getDocs(q);
+
+      if (!querySnapshot.empty) {
+        const chatDoc = querySnapshot.docs[0];
+        const chatData = chatDoc.data();
+
+        if (chatData.messages && chatData.messages.length > 0) {
+          setMessages(chatData.messages);
+        }
+        if (chatData.jlptLevel) {
+          setJlptLevel(chatData.jlptLevel);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading chat history:', error);
+    } finally {
+      setChatHistoryLoaded(true);
+    }
+  };
+
+  // Save chat to Firestore
+  const saveChatHistory = async (updatedMessages: ChatMessage[], currentLevel: JLPTLevel) => {
+    if (!user) return;
+
+    try {
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + 30);
+
+      await addDoc(collection(db, 'japaneseLearningChats'), {
+        userId: user.uid,
+        messages: updatedMessages,
+        jlptLevel: currentLevel,
+        createdAt: Timestamp.now(),
+        expiresAt: Timestamp.fromDate(expiryDate),
+      });
+    } catch (error) {
+      console.error('Error saving chat history:', error);
+    }
+  };
 
   const handleSend = async () => {
     if (!inputText.trim() || loading) return;
@@ -74,7 +144,11 @@ export default function JapaneseLearningScreen() {
         content: response,
       };
 
-      setMessages((prev) => [...prev, assistantMessage]);
+      const updatedMessages = [...messages, userMessage, assistantMessage];
+      setMessages(updatedMessages);
+
+      // Save to Firebase
+      saveChatHistory(updatedMessages, jlptLevel);
     } catch (error) {
       const errorMessage: ChatMessage = {
         role: 'assistant',
@@ -131,14 +205,16 @@ export default function JapaneseLearningScreen() {
               message.role === 'user' ? styles.userBubble : styles.assistantBubble,
             ]}
           >
-            <Text
-              style={[
-                styles.messageText,
-                message.role === 'user' ? styles.userText : styles.assistantText,
-              ]}
-            >
-              {message.content}
-            </Text>
+            {message.role === 'assistant' ? (
+              <TranslatableText
+                text={message.content}
+                textStyle={[styles.messageText, styles.assistantText]}
+              />
+            ) : (
+              <Text style={[styles.messageText, styles.userText]}>
+                {message.content}
+              </Text>
+            )}
           </View>
         ))}
         {loading && (
