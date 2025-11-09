@@ -5,9 +5,9 @@ export type AIModelTier = 'lite' | 'standard' | 'pro';
 
 // Gemini model mapping
 export const GEMINI_MODELS: Record<AIModelTier, string> = {
-  lite: 'gemini-2.0-flash-lite-latest',
-  standard: 'gemini-2.0-flash-latest',
-  pro: 'gemini-2.0-pro-latest',
+  lite: 'gemini-flash-lite-latest',
+  standard: 'gemini-flash-latest',
+  pro: 'gemini-pro-latest',
 };
 
 // Gemini pricing (USD per 1M tokens)
