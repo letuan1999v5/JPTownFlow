@@ -48,12 +48,11 @@ try {
 }
 
 // Initialize Firestore with React Native optimizations
+// IMPORTANT: Must call initializeFirestore BEFORE getFirestore
+// Otherwise, getFirestore will auto-initialize with default settings
 let db;
 try {
-  // Try to get existing instance first
-  db = getFirestore(app);
-} catch (error) {
-  // If not initialized, initialize with settings optimized for React Native
+  // Always try to initialize with custom settings FIRST
   db = initializeFirestore(app, {
     cacheSizeBytes: CACHE_SIZE_UNLIMITED,
     // Enable long polling for better mobile network handling
@@ -62,6 +61,9 @@ try {
     // Ignore undefined properties
     ignoreUndefinedProperties: true,
   });
+} catch (error: any) {
+  // If already initialized (e.g., during hot reload), get existing instance
+  db = getFirestore(app);
 }
 
 export { app, auth, db };
