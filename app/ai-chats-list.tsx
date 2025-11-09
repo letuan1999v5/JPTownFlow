@@ -79,9 +79,22 @@ export default function AIChatsListScreen() {
       });
 
       setChats(loadedChats);
-    } catch (error) {
-      console.error('Error loading chats:', error);
-      Alert.alert(t('error'), t('failedToLoadChats', 'Failed to load chats'));
+
+      // Log success for debugging
+      console.log(`✓ Successfully loaded ${loadedChats.length} AI chats`);
+    } catch (error: any) {
+      console.error('✗ Error loading chats:', error);
+
+      // Detailed error logging
+      const errorMessage = error?.message || 'Unknown error';
+      const errorCode = error?.code || 'unknown';
+      console.error(`Firestore error - Code: ${errorCode}, Message: ${errorMessage}`);
+
+      // Show detailed error to user
+      Alert.alert(
+        t('error'),
+        `${t('failedToLoadChats', 'Failed to load chats')}\n\nDetails:\nCode: ${errorCode}\nMessage: ${errorMessage}\n\nPlease check your internet connection and try again.`
+      );
     } finally {
       setLoading(false);
     }

@@ -2,7 +2,7 @@
 
 import { Platform } from 'react-native';
 import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, CACHE_SIZE_UNLIMITED } from 'firebase/firestore';
 
 const firebaseConfig = {
 apiKey: process.env.EXPO_PUBLIC_API_KEY,
@@ -42,7 +42,20 @@ if (Platform.OS === 'web') {
   }
 }
 
-// Initialize Firestore
-const db = getFirestore(app);
+// Initialize Firestore with improved settings
+let db;
+try {
+  // Try to get existing instance first
+  db = getFirestore(app);
+} catch (error) {
+  // If not initialized, initialize with custom settings
+  db = initializeFirestore(app, {
+    cacheSizeBytes: CACHE_SIZE_UNLIMITED,
+    // Disable experimental long polling (can cause WebChannel errors on web)
+    experimentalForceLongPolling: Platform.OS === 'web' ? false : undefined,
+    // Ignore undefined properties
+    ignoreUndefinedProperties: true,
+  });
+}
 
 export { app, auth, db };
