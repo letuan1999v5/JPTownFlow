@@ -21,7 +21,8 @@ import TranslatableText, { TranslatableWord } from '../components/common/Transla
 import SaveToNotebookModal from '../components/vocabulary/SaveToNotebookModal';
 import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
-import { CreditDisplay, CreditInfoModal } from '../components/credits';
+import { CreditDisplay, CreditInfoModal, ModelSelector } from '../components/credits';
+import { AIModelTier } from '../types/credits';
 import { doc, setDoc, getDoc, Timestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig';
 
@@ -45,6 +46,7 @@ export default function JapaneseLearningScreen() {
   const [translationLanguage, setTranslationLanguage] = useState<TranslationLanguage>(
     i18n.language as TranslationLanguage
   );
+  const [selectedModel, setSelectedModel] = useState<AIModelTier>('lite');
   const [showLevelModal, setShowLevelModal] = useState(false);
   const [showCreditInfo, setShowCreditInfo] = useState(false);
   const [isImportant, setIsImportant] = useState(false);
@@ -283,7 +285,7 @@ export default function JapaneseLearningScreen() {
         [...messages, userMessage],
         jlptLevel,
         translationLanguage,
-        'lite',
+        selectedModel,
         onTokenUsage
       );
 
@@ -491,6 +493,12 @@ export default function JapaneseLearningScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t('chatSettings', 'Chat Settings')}</Text>
+
+            {/* AI Model Selector */}
+            <ModelSelector
+              selectedModel={selectedModel}
+              onModelChange={setSelectedModel}
+            />
 
             {/* JLPT Level Section */}
             <Text style={styles.sectionTitle}>{t('jlptLevel', 'JLPT Level')}</Text>

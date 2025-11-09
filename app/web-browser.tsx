@@ -22,13 +22,15 @@ import {
   ChevronDown,
   ChevronUp,
   RefreshCw,
-  Home
+  Home,
+  Settings
 } from 'lucide-react-native';
-import { Alert } from 'react-native';
+import { Alert, Modal } from 'react-native';
 import { askAboutWebContent, TokenUsage } from '../services/geminiService';
 import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
-import { CreditDisplay, CreditInfoModal } from '../components/credits';
+import { CreditDisplay, CreditInfoModal, ModelSelector } from '../components/credits';
+import { AIModelTier } from '../types/credits';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CHAT_MIN_HEIGHT = SCREEN_HEIGHT * 0.15; // 15%
@@ -58,6 +60,8 @@ export default function WebBrowserScreen() {
 
   // Chat states
   const [chatExpanded, setChatExpanded] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<AIModelTier>('lite');
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showCreditInfo, setShowCreditInfo] = useState(false);
   const { creditBalance, refreshCreditBalance } = useSubscription();
   const [messages, setMessages] = useState<Message[]>([
@@ -266,7 +270,7 @@ export default function WebBrowserScreen() {
         content,
         userMessage.content,
         i18n.language,
-        'lite',
+        selectedModel,
         onTokenUsage
       );
 
@@ -352,6 +356,9 @@ export default function WebBrowserScreen() {
             <ArrowLeft size={20} color="#1F2937" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{t('aiBrowserTitle', 'AI Browser')}</Text>
+          <TouchableOpacity onPress={() => setShowSettingsModal(true)} style={styles.iconButton}>
+            <Settings size={20} color="#2563EB" />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.urlBar}>
@@ -501,6 +508,33 @@ export default function WebBrowserScreen() {
         </View>
       </Animated.View>
 
+      {/* Settings Modal */}
+      <Modal
+        visible={showSettingsModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowSettingsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{t('settings', 'Settings')}</Text>
+
+            {/* AI Model Selector */}
+            <ModelSelector
+              selectedModel={selectedModel}
+              onModelChange={setSelectedModel}
+            />
+
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowSettingsModal(false)}
+            >
+              <Text style={styles.modalCloseButtonText}>{t('close', 'Close')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* Credit Info Modal */}
       <CreditInfoModal
         visible={showCreditInfo}
@@ -532,6 +566,7 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   headerTitle: {
+    flex: 1,
     fontSize: 16,
     fontWeight: 'bold',
     color: '#1F2937',
@@ -720,5 +755,36 @@ const styles = StyleSheet.create({
   },
   headerContent: {
     flex: 1,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 40,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  modalCloseButton: {
+    marginTop: 8,
+    padding: 16,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  modalCloseButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6B7280',
   },
 });

@@ -11,14 +11,16 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Modal,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Send, Languages } from 'lucide-react-native';
-import { Alert } from 'react-native';
+import { ArrowLeft, Send, Languages, Settings } from 'lucide-react-native';
 import { translateJapanese, TokenUsage } from '../services/geminiService';
 import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
-import { CreditDisplay, CreditInfoModal } from '../components/credits';
+import { CreditDisplay, CreditInfoModal, ModelSelector } from '../components/credits';
+import { AIModelTier } from '../types/credits';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -42,6 +44,8 @@ export default function AITranslatorScreen() {
   ]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<AIModelTier>('lite');
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showCreditInfo, setShowCreditInfo] = useState(false);
   const { creditBalance, refreshCreditBalance } = useSubscription();
 
@@ -83,7 +87,7 @@ export default function AITranslatorScreen() {
         userTier,
         userMessage.content,
         i18n.language,
-        'lite',
+        selectedModel,
         onTokenUsage
       );
 
@@ -171,8 +175,10 @@ export default function AITranslatorScreen() {
           <Text style={styles.headerTitle}>{t('aiTranslatorTitle', 'AI Translator')}</Text>
           <Text style={styles.headerSubtitle}>{t('aiTranslatorSubtitle', 'Japanese ⇄ Your Language')}</Text>
         </View>
-        <View style={styles.headerRight}>
-          <Languages size={24} color="#2563EB" />
+        <View style={styles.headerButtons}>
+          <TouchableOpacity onPress={() => setShowSettingsModal(true)} style={styles.iconButton}>
+            <Settings size={22} color="#2563EB" />
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -235,6 +241,33 @@ export default function AITranslatorScreen() {
           <Send size={20} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
+
+      {/* Settings Modal */}
+      <Modal
+        visible={showSettingsModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowSettingsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{t('settings', 'Settings')}</Text>
+
+            {/* AI Model Selector */}
+            <ModelSelector
+              selectedModel={selectedModel}
+              onModelChange={setSelectedModel}
+            />
+
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowSettingsModal(false)}
+            >
+              <Text style={styles.modalCloseButtonText}>{t('close', 'Close')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Credit Info Modal */}
       <CreditInfoModal
@@ -388,5 +421,44 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#FFFFFF',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  iconButton: {
+    padding: 6,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 40,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  modalCloseButton: {
+    marginTop: 8,
+    padding: 16,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  modalCloseButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6B7280',
   },
 });
