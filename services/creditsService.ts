@@ -250,11 +250,12 @@ export async function checkAndResetCredits(
  */
 export async function deductCredits(
   userId: string,
-  tokens: number,
+  inputTokens: number,
+  outputTokens: number,
   feature: string,
   modelTier: AIModelTier
-): Promise<{ success: boolean; remainingCredits: number; message?: string }> {
-  const creditsNeeded = tokensToCredits(tokens);
+): Promise<{ success: boolean; remainingCredits: number; creditsDeducted: number; message?: string }> {
+  const creditsNeeded = tokensToCredits(inputTokens, outputTokens, modelTier);
 
   return await runTransaction(db, async (transaction) => {
     const docRef = doc(db, CREDITS_COLLECTION, userId);
@@ -337,17 +338,18 @@ export async function deductCredits(
       amount: -creditsNeeded,
       feature,
       modelTier,
-      tokensUsed: tokens,
+      tokensUsed: inputTokens + outputTokens,
       remainingMonthly: newMonthly,
       remainingCarryover: newCarryover,
       remainingExtra: newExtra,
-      description: `Used ${creditsNeeded} credits for ${feature} (${modelTier} model)`,
+      description: `Used ${creditsNeeded} credits for ${feature} (${modelTier} model, ${inputTokens} in + ${outputTokens} out)`,
       timestamp: now,
     });
 
     return {
       success: true,
       remainingCredits: newMonthly + newCarryover + newExtra,
+      creditsDeducted: creditsNeeded,
     };
   });
 }

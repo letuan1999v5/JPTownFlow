@@ -39,7 +39,7 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
     id: 'PRO',
     nameKey: 'subscriptionPro',
     price: 800,
-    credits: 2000,
+    credits: 1000,
     creditPeriod: 'monthly',
     allowedModels: ['lite', 'standard'],
     features: [
@@ -48,7 +48,7 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
       'featureLanguageSupport',
       'featureAIGarbageRecognition',
       'featureAIStandardModel',
-      'feature2000CreditsMonthly',
+      'feature1000CreditsMonthly',
       'featureCanBuyExtraCredits',
       'featureAdFree',
     ],
