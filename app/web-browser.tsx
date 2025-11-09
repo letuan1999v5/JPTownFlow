@@ -24,7 +24,8 @@ import {
   RefreshCw,
   Home
 } from 'lucide-react-native';
-import { askAboutWebContent } from '../services/geminiService';
+import { Alert } from 'react-native';
+import { askAboutWebContent, TokenUsage } from '../services/geminiService';
 import { useAuth } from '../context/AuthContext';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -40,11 +41,12 @@ interface Message {
 export default function WebBrowserScreen() {
   const { t, i18n } = useTranslation();
   const router = useRouter();
-  const { user, subscription } = useAuth();
+  const { user, subscription, role } = useAuth();
   const webViewRef = useRef<WebView>(null);
 
   // Check subscription status
   const hasSubscription = subscription === 'PRO' || subscription === 'ULTRA';
+  const isSuperAdmin = role === 'superadmin';
 
   // URL and WebView states
   const [url, setUrl] = useState('https://www.google.com');
@@ -241,11 +243,21 @@ export default function WebBrowserScreen() {
       // Always fetch fresh page content before sending to AI
       const content = await fetchPageContent();
 
+      // Token usage callback for super admin
+      const onTokenUsage = isSuperAdmin ? (usage: TokenUsage) => {
+        Alert.alert(
+          '🔧 Token Usage (Super Admin)',
+          `Prompt: ${usage.promptTokens}\nCompletion: ${usage.completionTokens}\nTotal: ${usage.totalTokens}`,
+          [{ text: 'OK' }]
+        );
+      } : undefined;
+
       // Get AI response with actual content
       const response = await askAboutWebContent(
         content,
         userMessage.content,
-        i18n.language
+        i18n.language,
+        onTokenUsage
       );
 
       const assistantMessage: Message = {

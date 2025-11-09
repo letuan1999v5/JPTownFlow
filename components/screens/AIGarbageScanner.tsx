@@ -19,8 +19,10 @@ import {
   GarbageAnalysisResult,
   analyzeGarbageImage,
   getCategoryDetails,
-  validateCategory
+  validateCategory,
+  TokenUsage
 } from '../../services/geminiService';
+import { useAuth } from '../../context/AuthContext';
 
 interface AIGarbageScannerProps {
   visible: boolean;
@@ -36,6 +38,8 @@ export default function AIGarbageScanner({
   districtId,
 }: AIGarbageScannerProps) {
   const { t, i18n } = useTranslation();
+  const { role } = useAuth();
+  const isSuperAdmin = role === 'superadmin';
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState<GarbageAnalysisResult | null>(null);
@@ -113,10 +117,20 @@ export default function AIGarbageScanner({
   const analyzeImage = async (base64: string) => {
     setAnalyzing(true);
     try {
+      // Token usage callback for super admin
+      const onTokenUsage = isSuperAdmin ? (usage: TokenUsage) => {
+        Alert.alert(
+          '🔧 Token Usage (Super Admin)',
+          `Prompt: ${usage.promptTokens}\nCompletion: ${usage.completionTokens}\nTotal: ${usage.totalTokens}`,
+          [{ text: 'OK' }]
+        );
+      } : undefined;
+
       const analysis = await analyzeGarbageImage(
         base64,
         wasteCategories,
-        i18n.language
+        i18n.language,
+        onTokenUsage
       );
       setResult(analysis);
     } catch (error) {
