@@ -449,5 +449,8 @@
   "modelCostLow": "Mababa",
   "modelCostMedium": "Katamtaman",
   "modelCostHigh": "Mataas",
-  "upgradeToUseModel": "I-upgrade sa {tier} upang gamitin ang modelong ito"
+  "upgradeToUseModel": "I-upgrade sa {tier} upang gamitin ang modelong ito",
+  "insufficientCredits": "Kulang na Kredito",
+  "insufficientCreditsMessage": "Naubos na ang iyong kredito. Mangyaring maghintay para sa pang-araw-araw/buwan-buwan na reset o mag-upgrade ng iyong plan para sa mas maraming kredito.",
+  "viewPlans": "Tingnan ang Mga Plano"
 }

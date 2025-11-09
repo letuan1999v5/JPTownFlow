@@ -437,5 +437,8 @@
   "modelCostLow": "Thấp",
   "modelCostMedium": "Trung bình",
   "modelCostHigh": "Cao",
-  "upgradeToUseModel": "Nâng cấp lên {tier} để dùng mô hình này"
+  "upgradeToUseModel": "Nâng cấp lên {tier} để dùng mô hình này",
+  "insufficientCredits": "Không đủ Điểm",
+  "insufficientCreditsMessage": "Bạn đã hết Điểm. Vui lòng chờ reset hàng ngày/tháng hoặc nâng cấp gói để có thêm Điểm.",
+  "viewPlans": "Xem Gói"
 }

@@ -449,5 +449,8 @@
   "modelCostLow": "低",
   "modelCostMedium": "中",
   "modelCostHigh": "高",
-  "upgradeToUseModel": "{tier}にアップグレードしてこのモデルを使用してください"
+  "upgradeToUseModel": "{tier}にアップグレードしてこのモデルを使用してください",
+  "insufficientCredits": "クレジット不足",
+  "insufficientCreditsMessage": "クレジットが不足しています。日次または月次のリセットを待つか、プランをアップグレードしてさらにクレジットを取得してください。",
+  "viewPlans": "プランを表示"
 }

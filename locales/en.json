@@ -446,5 +446,8 @@
   "modelCostLow": "Low",
   "modelCostMedium": "Medium",
   "modelCostHigh": "High",
-  "upgradeToUseModel": "Upgrade to {tier} to use this model"
+  "upgradeToUseModel": "Upgrade to {tier} to use this model",
+  "insufficientCredits": "Insufficient Credits",
+  "insufficientCreditsMessage": "You have run out of credits. Please wait for your daily/monthly reset or upgrade your plan for more credits.",
+  "viewPlans": "View Plans"
 }

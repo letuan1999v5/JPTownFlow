@@ -18,6 +18,9 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Send, Star, List, Settings } from 'lucide-react-native';
 import { chatWithAI, ChatMessage, TokenUsage } from '../services/geminiService';
 import { useAuth } from '../context/AuthContext';
+import { useSubscription } from '../context/SubscriptionContext';
+import { CreditDisplay, CreditInfoModal, ModelSelector } from '../components/credits';
+import { AIModelTier } from '../types/credits';
 import { doc, setDoc, getDoc, Timestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig';
 
@@ -30,8 +33,7 @@ export default function AIChatScreen() {
   const { user, subscription, role } = useAuth();
   const scrollViewRef = useRef<ScrollView>(null);
 
-  // Check subscription status
-  const hasSubscription = subscription === 'PRO' || subscription === 'ULTRA';
+  // Check if user is logged in
   const isSuperAdmin = role === 'superadmin';
 
   const [currentChatId, setCurrentChatId] = useState<string | null>(
@@ -40,8 +42,11 @@ export default function AIChatScreen() {
   const [translationLanguage, setTranslationLanguage] = useState<TranslationLanguage>(
     i18n.language as TranslationLanguage
   );
+  const [selectedModel, setSelectedModel] = useState<AIModelTier>('lite');
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showCreditInfo, setShowCreditInfo] = useState(false);
   const [isImportant, setIsImportant] = useState(false);
+  const { creditBalance, refreshCreditBalance } = useSubscription();
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
@@ -242,6 +247,10 @@ export default function AIChatScreen() {
     setLoading(true);
 
     try {
+      // Get userId and userTier
+      const userId = user?.uid || '';
+      const userTier = subscription || 'FREE';
+
       // Token usage callback for super admin
       const onTokenUsage = isSuperAdmin ? (usage: TokenUsage) => {
         Alert.alert(
@@ -252,8 +261,11 @@ export default function AIChatScreen() {
       } : undefined;
 
       const response = await chatWithAI(
+        userId,
+        userTier,
         [...messages, userMessage],
         translationLanguage,
+        selectedModel,
         onTokenUsage
       );
 
@@ -267,12 +279,32 @@ export default function AIChatScreen() {
 
       // Save to Firebase
       saveChatHistory(updatedMessages);
-    } catch (error) {
-      const errorMessage: ChatMessage = {
-        role: 'assistant',
-        content: t('aiError', 'Sorry, I encountered an error. Please try again.'),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+
+      // Refresh credit balance to update UI
+      await refreshCreditBalance();
+    } catch (error: any) {
+      console.error('AI error:', error);
+
+      // Check if it's a credit error
+      if (error.message?.includes('Insufficient credits') ||
+          error.message?.includes('Failed to deduct credits')) {
+        Alert.alert(
+          t('insufficientCredits', 'Insufficient Credits'),
+          t('insufficientCreditsMessage', 'You have run out of credits. Please wait for your daily/monthly reset or upgrade your plan for more credits.'),
+          [
+            { text: t('ok', 'OK') },
+            { text: t('viewPlans', 'View Plans'), onPress: () => router.push('/(tabs)/premium') }
+          ]
+        );
+        // Refresh credit balance to show current state
+        await refreshCreditBalance();
+      } else {
+        const errorMessage: ChatMessage = {
+          role: 'assistant',
+          content: error.message || t('aiError', 'Sorry, I encountered an error. Please try again.'),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      }
     } finally {
       setLoading(false);
     }
@@ -290,8 +322,8 @@ export default function AIChatScreen() {
     setMessages((prev) => [...prev, langChangeMessage]);
   };
 
-  // Show subscription required message if no subscription
-  if (!user || !hasSubscription) {
+  // Show login required message if not logged in
+  if (!user) {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
@@ -305,19 +337,17 @@ export default function AIChatScreen() {
         <View style={styles.subscriptionRequired}>
           <Text style={styles.lockIcon}>🔒</Text>
           <Text style={styles.subscriptionTitle}>
-            {!user ? t('loginRequired', 'Login Required') : t('subscriptionRequired', 'Subscription Required')}
+            {t('loginRequired', 'Login Required')}
           </Text>
           <Text style={styles.subscriptionMessage}>
-            {!user
-              ? t('aiLoginMessage', 'Please login to use AI Assistant features.')
-              : t('aiSubscriptionMessage', 'AI Assistant features require a PRO or ULTRA subscription. Please upgrade to continue.')}
+            {t('aiLoginMessage', 'Please login to use AI Assistant features.')}
           </Text>
           <TouchableOpacity
             style={styles.upgradeButton}
             onPress={() => router.push('/(tabs)/premium')}
           >
             <Text style={styles.upgradeButtonText}>
-              {!user ? t('login', 'Login') : t('upgrade', 'Upgrade')}
+              {t('login', 'Login')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -353,6 +383,14 @@ export default function AIChatScreen() {
             <Settings size={22} color="#2563EB" />
           </TouchableOpacity>
         </View>
+      </View>
+
+      {/* Credit Display */}
+      <View style={{ padding: 16, paddingBottom: 8 }}>
+        <CreditDisplay
+          onInfoPress={() => setShowCreditInfo(true)}
+          showInfoIcon={true}
+        />
       </View>
 
       {/* Messages */}
@@ -417,6 +455,12 @@ export default function AIChatScreen() {
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t('chatSettings', 'Chat Settings')}</Text>
 
+            {/* AI Model Selector */}
+            <ModelSelector
+              selectedModel={selectedModel}
+              onModelChange={setSelectedModel}
+            />
+
             {/* Translation Language Section */}
             <Text style={styles.sectionTitle}>{t('translationLanguage', 'Translation Language')}</Text>
             <ScrollView style={styles.languageScrollView}>
@@ -446,6 +490,12 @@ export default function AIChatScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Credit Info Modal */}
+      <CreditInfoModal
+        visible={showCreditInfo}
+        onClose={() => setShowCreditInfo(false)}
+      />
     </KeyboardAvoidingView>
   );
 }

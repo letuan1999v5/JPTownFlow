@@ -449,5 +449,8 @@
   "modelCostLow": "低",
   "modelCostMedium": "中等",
   "modelCostHigh": "高",
-  "upgradeToUseModel": "升级到{tier}以使用此模型"
+  "upgradeToUseModel": "升级到{tier}以使用此模型",
+  "insufficientCredits": "积分不足",
+  "insufficientCreditsMessage": "您的积分已用完。请等待每日/每月重置或升级您的计划以获得更多积分。",
+  "viewPlans": "查看计划"
 }
