@@ -3,7 +3,13 @@
 
 import { getApp, getApps, initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth'; // Chỉ import 'getAuth' của web
-import { getFirestore } from 'firebase/firestore';
+import {
+  getFirestore,
+  initializeFirestore,
+  CACHE_SIZE_UNLIMITED,
+  persistentLocalCache,
+  persistentMultipleTabManager
+} from 'firebase/firestore';
 
 // --- CẤU HÌNH ---
 const firebaseConfig = {
@@ -22,7 +28,20 @@ if (!firebaseConfig.apiKey) {
 
 // --- KHỞI TẠO VÀ EXPORT (Web) ---
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-const db = getFirestore(app);
+
+// Initialize Firestore with improved settings for web
+let db;
+try {
+  // Try to get existing instance first
+  db = getFirestore(app);
+} catch (error) {
+  // If not initialized, initialize with custom settings to reduce WebChannel errors
+  db = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager()
+    })
+  });
+}
 
 // Chỉ dùng logic của Web
 const auth = getAuth(app);

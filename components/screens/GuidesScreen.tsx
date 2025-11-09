@@ -49,9 +49,22 @@ export const GuidesScreen: React.FC = () => {
       });
 
       setGuides(loadedGuides);
-    } catch (error) {
-      console.error('Error loading guides:', error);
-      Alert.alert(t('error'), t('errorLoadingGuides'));
+
+      // Log success for debugging
+      console.log(`✓ Successfully loaded ${loadedGuides.length} guides`);
+    } catch (error: any) {
+      console.error('✗ Error loading guides:', error);
+
+      // Detailed error logging
+      const errorMessage = error?.message || 'Unknown error';
+      const errorCode = error?.code || 'unknown';
+      console.error(`Firestore error - Code: ${errorCode}, Message: ${errorMessage}`);
+
+      // Show detailed error to user
+      Alert.alert(
+        t('error'),
+        `${t('errorLoadingGuides')}\n\nDetails:\nCode: ${errorCode}\nMessage: ${errorMessage}\n\nPlease check your internet connection and try again.`
+      );
     } finally {
       setLoading(false);
     }
