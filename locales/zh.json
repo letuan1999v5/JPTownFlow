@@ -297,6 +297,13 @@
   "japaneseLearnTitle": "Learn Japanese",
   "japaneseLearnDesc": "Study Japanese with AI tutor (JLPT N1-N5)",
   "selectJLPTLevel": "Select JLPT Level",
+
+  "aiTranslatorTitle": "AI翻译",
+  "aiTranslatorDesc": "智能翻译和解释日语文本",
+  "aiTranslatorWelcome": "欢迎使用AI翻译！输入任何日语文本 - 汉字、词汇或段落 - 我将帮助您理解它。",
+  "aiTranslatorSubtitle": "日语 ⇄ 您的语言",
+  "aiTranslatorPlaceholder": "输入日语文本...",
+  "translating": "翻译中...",
   "jlptN5": "Beginner - Basic phrases and simple grammar",
   "jlptN4": "Elementary - Daily conversation topics",
   "jlptN3": "Intermediate - Everyday situations",

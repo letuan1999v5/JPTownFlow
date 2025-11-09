@@ -287,6 +287,13 @@
   "japaneseLearnTitle": "Learn Japanese",
   "japaneseLearnDesc": "Study Japanese with AI tutor (JLPT N1-N5)",
   "selectJLPTLevel": "Select JLPT Level",
+
+  "aiTranslatorTitle": "Dịch AI",
+  "aiTranslatorDesc": "Dịch & giải thích văn bản tiếng Nhật thông minh",
+  "aiTranslatorWelcome": "Chào mừng đến với Dịch AI! Nhập bất kỳ văn bản tiếng Nhật nào - chữ Hán, từ vựng, hoặc đoạn văn - và tôi sẽ giúp bạn hiểu nó.",
+  "aiTranslatorSubtitle": "Tiếng Nhật ⇄ Ngôn ngữ của bạn",
+  "aiTranslatorPlaceholder": "Nhập văn bản tiếng Nhật...",
+  "translating": "Đang dịch...",
   "jlptN5": "Beginner - Basic phrases and simple grammar",
   "jlptN4": "Elementary - Daily conversation topics",
   "jlptN3": "Intermediate - Everyday situations",

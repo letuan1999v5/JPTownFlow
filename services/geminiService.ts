@@ -392,3 +392,76 @@ Remember: Respond in the SAME LANGUAGE as the question above.`;
     throw new Error('Failed to answer question. Please try again.');
   }
 }
+
+/**
+ * Translate and explain Japanese text
+ */
+export async function translateJapanese(
+  japaneseText: string,
+  targetLanguage: string = 'en'
+): Promise<string> {
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+
+    const languageMap: { [key: string]: string } = {
+      en: 'English',
+      ja: 'Japanese',
+      vi: 'Vietnamese',
+      zh: 'Chinese',
+      ko: 'Korean',
+      pt: 'Portuguese',
+      es: 'Spanish',
+      fil: 'Filipino',
+      th: 'Thai',
+      id: 'Indonesian',
+    };
+
+    const outputLanguage = languageMap[targetLanguage] || 'English';
+
+    const prompt = `You are a professional Japanese translator and language teacher. Analyze the following Japanese text and provide appropriate response in ${outputLanguage}.
+
+INPUT TEXT: "${japaneseText}"
+
+CRITICAL INSTRUCTIONS:
+1. ALWAYS respond in ${outputLanguage} language
+2. Detect the type of input:
+   - Single Kanji (漢字): Explain the kanji meaning, readings (音読み/訓読み), and common compound words
+   - Word/Phrase (単語/フレーズ): Translate, explain meaning, and provide 2-3 example sentences
+   - Sentence/Paragraph (文/段落): Provide natural translation with explanations if needed
+   - Nonsense/Invalid: Indicate it's invalid or nonsensical
+
+3. FORMAT YOUR RESPONSE:
+
+   For Single Kanji:
+   - Meaning: [translation]
+   - Readings: 音読み (on'yomi) / 訓読み (kun'yomi)
+   - Common words: [list 3-5 compound words with this kanji]
+   - Example: [1 example sentence using this kanji]
+
+   For Word/Phrase:
+   - Translation: [translation]
+   - Explanation: [detailed meaning and usage]
+   - Examples:
+     1. [Japanese sentence] → [Translation]
+     2. [Japanese sentence] → [Translation]
+
+   For Sentence/Paragraph:
+   - Translation: [natural translation]
+   - Notes: [any cultural or grammatical notes if needed]
+
+   For Invalid Input:
+   - Simply state: "This text appears to be invalid or nonsensical."
+
+4. Be clear, educational, and helpful
+5. IMPORTANT: Write EVERYTHING in ${outputLanguage}, including explanations
+
+Now analyze the text and provide your response:`;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    return response.text();
+  } catch (error) {
+    console.error('Gemini Translation API error:', error);
+    throw new Error('Failed to translate. Please try again.');
+  }
+}

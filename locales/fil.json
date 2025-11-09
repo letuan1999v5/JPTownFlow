@@ -297,6 +297,13 @@
   "japaneseLearnTitle": "Learn Japanese",
   "japaneseLearnDesc": "Study Japanese with AI tutor (JLPT N1-N5)",
   "selectJLPTLevel": "Select JLPT Level",
+
+  "aiTranslatorTitle": "AI Translator",
+  "aiTranslatorDesc": "Isalin at ipaliwanag ang Japanese text nang matalino",
+  "aiTranslatorWelcome": "Maligayang pagdating sa AI Translator! Maglagay ng anumang Japanese text - kanji, bokabularyo, o mga talata - at tutulungan ko kayong maintindihan ito.",
+  "aiTranslatorSubtitle": "Japanese ⇄ Inyong Wika",
+  "aiTranslatorPlaceholder": "Maglagay ng Japanese text...",
+  "translating": "Nagsasalin...",
   "jlptN5": "Beginner - Basic phrases and simple grammar",
   "jlptN4": "Elementary - Daily conversation topics",
   "jlptN3": "Intermediate - Everyday situations",
