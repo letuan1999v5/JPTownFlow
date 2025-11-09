@@ -14,9 +14,11 @@ export interface SubscriptionPlan {
 }
 
 export interface UserSubscription {
-  tier: SubscriptionTier;
+  tier: SubscriptionTier; // Current active tier
   startDate: Date | null;
-  endDate: Date | null;
+  endDate: Date | null; // When current tier expires
+  pendingTier?: SubscriptionTier; // Tier to switch to after endDate (for downgrades)
+  pendingStartDate?: Date; // When pending tier should start (should match endDate)
 }
 
 export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
