@@ -5,13 +5,16 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSubscription } from '../../context/SubscriptionContext';
 import { useTranslation } from 'react-i18next';
+import { AIModelTier } from '../../types/credits';
 
 interface CreditDisplayProps {
+  selectedModel?: AIModelTier;
   onInfoPress?: () => void;
   showInfoIcon?: boolean;
 }
 
 export const CreditDisplay: React.FC<CreditDisplayProps> = ({
+  selectedModel,
   onInfoPress,
   showInfoIcon = true,
 }) => {
@@ -60,6 +63,14 @@ export const CreditDisplay: React.FC<CreditDisplayProps> = ({
         )}
       </View>
 
+      {selectedModel && (
+        <View style={styles.modelBadge}>
+          <Text style={styles.modelText}>
+            {t(`model${selectedModel.charAt(0).toUpperCase() + selectedModel.slice(1)}`)}
+          </Text>
+        </View>
+      )}
+
       {showInfoIcon && onInfoPress && (
         <TouchableOpacity
           onPress={onInfoPress}
@@ -87,6 +98,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flex: 1,
   },
   creditText: {
     fontSize: 16,
@@ -96,6 +108,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#f59e0b',
     marginLeft: 4,
+  },
+  modelBadge: {
+    backgroundColor: '#3b82f6',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  modelText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#ffffff',
   },
   infoButton: {
     padding: 2,
