@@ -11,9 +11,6 @@ export default function AIAssistantScreen() {
   const router = useRouter();
   const { user, subscription } = useAuth();
 
-  // Check subscription status
-  const hasSubscription = subscription === 'PRO' || subscription === 'ULTRA';
-
   const handleFeaturePress = (route: string) => {
     if (!user) {
       Alert.alert(
@@ -24,18 +21,8 @@ export default function AIAssistantScreen() {
       return;
     }
 
-    if (!hasSubscription) {
-      Alert.alert(
-        t('subscriptionRequired', 'Subscription Required'),
-        t('aiSubscriptionMessage', 'AI Assistant features require a PRO or ULTRA subscription. Please upgrade to continue.'),
-        [
-          { text: t('cancel', 'Cancel'), style: 'cancel' },
-          { text: t('upgrade', 'Upgrade'), onPress: () => router.push('/(tabs)/premium') },
-        ]
-      );
-      return;
-    }
-
+    // Allow all logged-in users (including FREE) to access AI features
+    // Credit system will handle usage limits
     router.push(route as any);
   };
 
@@ -84,7 +71,7 @@ export default function AIAssistantScreen() {
       <View style={styles.featuresContainer}>
         {features.map((feature) => {
           const Icon = feature.icon;
-          const isLocked = !user || !hasSubscription;
+          const isLocked = !user;
           return (
             <TouchableOpacity
               key={feature.id}

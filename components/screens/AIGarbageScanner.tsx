@@ -38,7 +38,7 @@ export default function AIGarbageScanner({
   districtId,
 }: AIGarbageScannerProps) {
   const { t, i18n } = useTranslation();
-  const { role } = useAuth();
+  const { user, subscription, role } = useAuth();
   const isSuperAdmin = role === 'superadmin';
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -117,6 +117,20 @@ export default function AIGarbageScanner({
   const analyzeImage = async (base64: string) => {
     setAnalyzing(true);
     try {
+      // Check if user is logged in
+      if (!user) {
+        Alert.alert(
+          t('loginRequired', 'Login Required'),
+          t('aiLoginMessage', 'Please login to use AI features.')
+        );
+        resetState();
+        return;
+      }
+
+      // Get userId and userTier
+      const userId = user.uid;
+      const userTier = subscription || 'FREE';
+
       // Token usage callback for super admin
       const onTokenUsage = isSuperAdmin ? (usage: TokenUsage) => {
         Alert.alert(
@@ -127,9 +141,12 @@ export default function AIGarbageScanner({
       } : undefined;
 
       const analysis = await analyzeGarbageImage(
+        userId,
+        userTier,
         base64,
         wasteCategories,
         i18n.language,
+        'lite',
         onTokenUsage
       );
       setResult(analysis);

@@ -44,8 +44,7 @@ export default function WebBrowserScreen() {
   const { user, subscription, role } = useAuth();
   const webViewRef = useRef<WebView>(null);
 
-  // Check subscription status
-  const hasSubscription = subscription === 'PRO' || subscription === 'ULTRA';
+  // Check if user is logged in
   const isSuperAdmin = role === 'superadmin';
 
   // URL and WebView states
@@ -243,6 +242,10 @@ export default function WebBrowserScreen() {
       // Always fetch fresh page content before sending to AI
       const content = await fetchPageContent();
 
+      // Get userId and userTier
+      const userId = user?.uid || '';
+      const userTier = subscription || 'FREE';
+
       // Token usage callback for super admin
       const onTokenUsage = isSuperAdmin ? (usage: TokenUsage) => {
         Alert.alert(
@@ -254,9 +257,12 @@ export default function WebBrowserScreen() {
 
       // Get AI response with actual content
       const response = await askAboutWebContent(
+        userId,
+        userTier,
         content,
         userMessage.content,
         i18n.language,
+        'lite',
         onTokenUsage
       );
 
@@ -278,8 +284,8 @@ export default function WebBrowserScreen() {
     }
   };
 
-  // Show subscription required message if no subscription
-  if (!user || !hasSubscription) {
+  // Show login required message if not logged in
+  if (!user) {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
@@ -293,19 +299,17 @@ export default function WebBrowserScreen() {
         <View style={styles.subscriptionRequired}>
           <Text style={styles.lockIcon}>🔒</Text>
           <Text style={styles.subscriptionTitle}>
-            {!user ? t('loginRequired', 'Login Required') : t('subscriptionRequired', 'Subscription Required')}
+            {t('loginRequired', 'Login Required')}
           </Text>
           <Text style={styles.subscriptionMessage}>
-            {!user
-              ? t('aiLoginMessage', 'Please login to use AI Assistant features.')
-              : t('aiSubscriptionMessage', 'AI Assistant features require a PRO or ULTRA subscription. Please upgrade to continue.')}
+            {t('aiLoginMessage', 'Please login to use AI Assistant features.')}
           </Text>
           <TouchableOpacity
             style={styles.upgradeButton}
             onPress={() => router.push('/(tabs)/premium')}
           >
             <Text style={styles.upgradeButtonText}>
-              {!user ? t('login', 'Login') : t('upgrade', 'Upgrade')}
+              {t('login', 'Login')}
             </Text>
           </TouchableOpacity>
         </View>
