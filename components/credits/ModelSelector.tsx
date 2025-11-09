@@ -5,7 +5,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AIModelTier } from '../../types/credits';
 import { useSubscription } from '../../context/SubscriptionContext';
-import { useTranslation } from 'react-i18n-hook';
+import { useTranslation } from 'react-i18next';
 
 interface ModelSelectorProps {
   selectedModel: AIModelTier;

@@ -4,7 +4,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSubscription } from '../../context/SubscriptionContext';
-import { useTranslation } from 'react-i18n-hook';
+import { useTranslation } from 'react-i18next';
 
 interface CreditDisplayProps {
   onInfoPress?: () => void;
