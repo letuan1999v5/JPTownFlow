@@ -430,7 +430,7 @@
   "feature10000CreditsMonthly": "10000 Credits monthly",
   "featureCarryoverCredits": "Unused credits carry over to next month",
   "modelLite": "Lite",
-  "modelStandard": "Standard",
+  "modelFlash": "Flash",
   "modelPro": "Pro",
   "selectModel": "Select AI Model",
   "modelSelectionHelper": "Choose a model based on your needs. Higher models provide better accuracy but cost more credits.",

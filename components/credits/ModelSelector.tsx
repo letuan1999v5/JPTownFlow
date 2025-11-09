@@ -19,7 +19,7 @@ const MODEL_INFO: Record<AIModelTier, { icon: string; speed: string; accuracy: s
     accuracy: 'modelAccuracyGood',
     cost: 'modelCostLow',
   },
-  standard: {
+  flash: {
     icon: 'speedometer',
     speed: 'modelSpeedMedium',
     accuracy: 'modelAccuracyGreat',
@@ -122,7 +122,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
         {!canUse && (
           <Text style={styles.upgradeText}>
             {t('upgradeToUseModel', {
-              tier: modelTier === 'standard' ? 'PRO' : 'ULTRA',
+              tier: 'PRO',
             })}
           </Text>
         )}
@@ -134,7 +134,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     <View style={styles.container}>
       <Text style={styles.sectionTitle}>{t('selectModel')}</Text>
       <View style={styles.modelList}>
-        {(['lite', 'standard', 'pro'] as AIModelTier[]).map(renderModelOption)}
+        {(['lite', 'flash', 'pro'] as AIModelTier[]).map(renderModelOption)}
       </View>
       <Text style={styles.helperText}>{t('modelSelectionHelper')}</Text>
     </View>

@@ -433,7 +433,7 @@
   "feature10000CreditsMonthly": "每月10000积分",
   "featureCarryoverCredits": "未使用积分结转至下月",
   "modelLite": "精简版",
-  "modelStandard": "标准版",
+  "modelFlash": "标准版",
   "modelPro": "专业版",
   "selectModel": "选择AI模型",
   "modelSelectionHelper": "根据您的需求选择模型。更高版本的模型提供更好的准确度，但成本更高。",

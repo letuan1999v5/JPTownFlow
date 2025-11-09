@@ -433,7 +433,7 @@
   "feature10000CreditsMonthly": "毎月10000ポイント",
   "featureCarryoverCredits": "未使用ポイントは翌月に繰り越し",
   "modelLite": "ライト",
-  "modelStandard": "スタンダード",
+  "modelFlash": "スタンダード",
   "modelPro": "プロ",
   "selectModel": "AIモデルを選択",
   "modelSelectionHelper": "ニーズに合わせてモデルを選択してください。上位モデルはより正確な結果を提供しますが、クレジットが多くかかります。",

@@ -1,12 +1,12 @@
 // types/credits.ts
 
 // AI Model tiers
-export type AIModelTier = 'lite' | 'standard' | 'pro';
+export type AIModelTier = 'lite' | 'flash' | 'pro';
 
 // Gemini model mapping
 export const GEMINI_MODELS: Record<AIModelTier, string> = {
   lite: 'gemini-flash-lite-latest',
-  standard: 'gemini-flash-latest',
+  flash: 'gemini-flash-latest',
   pro: 'gemini-pro-latest',
 };
 
@@ -16,7 +16,7 @@ export const GEMINI_PRICING: Record<AIModelTier, { input: number; output: number
     input: 0.10,    // $0.10 per 1M input tokens
     output: 0.40,   // $0.40 per 1M output tokens
   },
-  standard: {
+  flash: {
     input: 0.30,    // $0.30 per 1M input tokens
     output: 2.50,   // $2.50 per 1M output tokens
   },
@@ -114,7 +114,7 @@ export const CREDIT_ALLOCATIONS: Record<string, CreditAllocation> = {
     period: 'daily',
     allowCarryover: false,
     allowExtraPurchase: false,
-    allowedModels: ['lite'],
+    allowedModels: ['lite', 'flash'],
   },
   PRO: {
     tier: 'PRO',
@@ -122,7 +122,7 @@ export const CREDIT_ALLOCATIONS: Record<string, CreditAllocation> = {
     period: 'monthly',
     allowCarryover: false,
     allowExtraPurchase: true,
-    allowedModels: ['lite', 'standard'],
+    allowedModels: ['lite', 'flash', 'pro'],
   },
   ULTRA: {
     tier: 'ULTRA',
@@ -130,7 +130,7 @@ export const CREDIT_ALLOCATIONS: Record<string, CreditAllocation> = {
     period: 'monthly',
     allowCarryover: true,
     allowExtraPurchase: true,
-    allowedModels: ['lite', 'standard', 'pro'],
+    allowedModels: ['lite', 'flash', 'pro'],
   },
 };
 

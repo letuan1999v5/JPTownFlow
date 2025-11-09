@@ -433,7 +433,7 @@
   "feature10000CreditsMonthly": "10000 Créditos mensuales",
   "featureCarryoverCredits": "Créditos no utilizados se transfieren al próximo mes",
   "modelLite": "Lite",
-  "modelStandard": "Estándar",
+  "modelFlash": "Estándar",
   "modelPro": "Pro",
   "selectModel": "Seleccionar Modelo IA",
   "modelSelectionHelper": "Elige un modelo según tus necesidades. Los modelos superiores ofrecen mejor precisión pero cuestan más créditos.",
