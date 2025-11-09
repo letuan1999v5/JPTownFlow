@@ -33,12 +33,21 @@ if (Platform.OS === 'web') {
   const { initializeAuth, getAuth, getReactNativePersistence } = require('firebase/auth');
   const AsyncStorage = require('@react-native-async-storage/async-storage').default;
 
+  // Always use initializeAuth for React Native to ensure AsyncStorage persistence
+  // This ensures auth state persists between sessions
   try {
-    auth = getAuth(app);
-  } catch (error) {
+    // Try to initialize auth with AsyncStorage persistence
     auth = initializeAuth(app, {
       persistence: getReactNativePersistence(AsyncStorage)
     });
+  } catch (error: any) {
+    // If auth is already initialized (e.g., during hot reload), get the existing instance
+    // The existing instance should already have AsyncStorage persistence from the first initialization
+    if (error.code === 'auth/already-initialized') {
+      auth = getAuth(app);
+    } else {
+      throw error;
+    }
   }
 }
 
@@ -48,14 +57,24 @@ try {
   // Try to get existing instance first
   db = getFirestore(app);
 } catch (error) {
-  // If not initialized, initialize with custom settings
-  db = initializeFirestore(app, {
+  // If not initialized, initialize with custom settings optimized for React Native
+  const firestoreSettings: any = {
     cacheSizeBytes: CACHE_SIZE_UNLIMITED,
-    // Disable experimental long polling (can cause WebChannel errors on web)
-    experimentalForceLongPolling: Platform.OS === 'web' ? false : undefined,
-    // Ignore undefined properties
     ignoreUndefinedProperties: true,
-  });
+  };
+
+  // Platform-specific optimizations
+  if (Platform.OS === 'web') {
+    // Web: Disable experimental long polling to prevent WebChannel errors
+    firestoreSettings.experimentalForceLongPolling = false;
+    firestoreSettings.experimentalAutoDetectLongPolling = true;
+  } else {
+    // React Native: Enable long polling for better mobile network handling
+    // This helps with unstable network connections
+    firestoreSettings.experimentalForceLongPolling = true;
+  }
+
+  db = initializeFirestore(app, firestoreSettings);
 }
 
 export { app, auth, db };
