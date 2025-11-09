@@ -11,12 +11,28 @@ import React, {
 import { SubscriptionTier, UserSubscription } from '../types/subscription';
 import { db } from '../firebase/firebaseConfig';
 import { useAuth } from './AuthContext';
+import {
+  CreditBalance,
+  getTotalCredits,
+  canUseModel,
+  AIModelTier,
+  CREDIT_ALLOCATIONS
+} from '../types/credits';
+import {
+  getCreditBalance,
+  checkAndResetCredits,
+  initializeCreditBalance
+} from '../services/creditsService';
 
 interface SubscriptionContextType {
   subscription: UserSubscription | null;
+  creditBalance: CreditBalance | null;
   loading: boolean;
   upgradeSubscription: (tier: SubscriptionTier) => Promise<boolean>;
   hasFeature: (feature: string) => boolean;
+  refreshCreditBalance: () => Promise<void>;
+  canUseAIModel: (modelTier: AIModelTier) => boolean;
+  getTotalAvailableCredits: () => number;
 }
 
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
@@ -24,13 +40,15 @@ const SubscriptionContext = createContext<SubscriptionContextType | undefined>(u
 export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
+  const [creditBalance, setCreditBalance] = useState<CreditBalance | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
-  // Load subscription from Firestore when user changes
+  // Load subscription and credit balance from Firestore when user changes
   useEffect(() => {
     const loadSubscription = async () => {
       if (!user) {
         setSubscription(null);
+        setCreditBalance(null);
         return;
       }
 
@@ -38,10 +56,13 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
         const userDocRef = doc(db, 'users', user.uid);
         const userDoc = await getDoc(userDocRef);
 
+        let userTier: SubscriptionTier = 'FREE';
+
         if (userDoc.exists()) {
           const data = userDoc.data();
+          userTier = data.subscription || 'FREE';
           setSubscription({
-            tier: data.subscription || 'FREE',
+            tier: userTier,
             startDate: data.subscriptionStartDate?.toDate() || null,
             endDate: data.subscriptionEndDate?.toDate() || null,
           });
@@ -53,6 +74,17 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
             endDate: null,
           });
         }
+
+        // Load or initialize credit balance
+        let balance = await getCreditBalance(user.uid);
+        if (!balance) {
+          // Initialize credit balance for new user
+          balance = await initializeCreditBalance(user.uid, userTier);
+        } else {
+          // Check and reset credits if needed (daily/monthly reset)
+          balance = await checkAndResetCredits(user.uid, userTier);
+        }
+        setCreditBalance(balance);
       } catch (error) {
         console.error('Error loading subscription:', error);
         setSubscription({
@@ -60,6 +92,7 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
           startDate: null,
           endDate: null,
         });
+        setCreditBalance(null);
       }
     };
 
@@ -91,6 +124,10 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
         endDate,
       });
 
+      // Reset credit balance with new tier
+      const newBalance = await checkAndResetCredits(user.uid, tier);
+      setCreditBalance(newBalance);
+
       setLoading(false);
       return true;
     } catch (error) {
@@ -115,11 +152,38 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
     return features[tier]?.includes(feature) || false;
   };
 
+  const refreshCreditBalance = async () => {
+    if (!user || !subscription) return;
+
+    try {
+      const balance = await checkAndResetCredits(user.uid, subscription.tier);
+      setCreditBalance(balance);
+    } catch (error) {
+      console.error('Error refreshing credit balance:', error);
+    }
+  };
+
+  const canUseAIModel = (modelTier: AIModelTier): boolean => {
+    if (!subscription) return false;
+    // Super admin can use all models
+    if (subscription.tier === 'SUPERADMIN') return true;
+    return canUseModel(subscription.tier, modelTier);
+  };
+
+  const getTotalAvailableCredits = (): number => {
+    if (!creditBalance) return 0;
+    return getTotalCredits(creditBalance);
+  };
+
   const value = {
     subscription,
+    creditBalance,
     loading,
     upgradeSubscription,
     hasFeature,
+    refreshCreditBalance,
+    canUseAIModel,
+    getTotalAvailableCredits,
   };
 
   return (

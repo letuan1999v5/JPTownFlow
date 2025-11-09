@@ -1,6 +1,8 @@
 // services/geminiService.ts
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { AIModelTier, GEMINI_MODELS, canUseModel } from '../types/credits';
+import { deductCredits, checkAndResetCredits } from './creditsService';
 
 // Initialize Gemini AI
 const API_KEY = process.env.EXPO_PUBLIC_GOOGLE_AI_API_KEY || '';
@@ -15,6 +17,13 @@ export interface TokenUsage {
 
 // Optional callback for token usage tracking (for super admin)
 export type TokenUsageCallback = (usage: TokenUsage) => void;
+
+// Credit check result
+export interface CreditCheckResult {
+  canProceed: boolean;
+  message?: string;
+  remainingCredits?: number;
+}
 
 // Map language codes to full language names for better AI understanding
 const getLanguageName = (languageCode: string): string => {
@@ -45,14 +54,31 @@ export interface GarbageAnalysisResult {
  * Phân tích ảnh rác sử dụng Gemini Vision API
  */
 export async function analyzeGarbageImage(
+  userId: string,
+  userTier: string,
   imageBase64: string,
   wasteCategories: any, // Rules từ Firestore
   language: string = 'vi',
+  modelTier: AIModelTier = 'lite',
   onTokenUsage?: TokenUsageCallback
 ): Promise<GarbageAnalysisResult> {
   try {
+    // Check if user is super admin (unlimited credits)
+    const isSuperAdmin = userTier === 'SUPERADMIN';
+
+    // Check if user can use this model
+    if (!isSuperAdmin && !canUseModel(userTier, modelTier)) {
+      throw new Error(`Your subscription plan does not support ${modelTier} model. Please upgrade or choose a different model.`);
+    }
+
+    // Check and reset credits if needed (unless super admin)
+    if (!isSuperAdmin) {
+      await checkAndResetCredits(userId, userTier);
+    }
+
     // Get the generative model
-    const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+    const modelName = GEMINI_MODELS[modelTier];
+    const model = genAI.getGenerativeModel({ model: modelName });
 
     // Build categories context for AI
     const categoriesContext = Object.keys(wasteCategories || {})
@@ -143,13 +169,30 @@ Respond in JSON format:
     const response = await result.response;
     const text = response.text();
 
+    // Get token usage
+    const tokenUsage: TokenUsage = {
+      promptTokens: response.usageMetadata?.promptTokenCount || 0,
+      completionTokens: response.usageMetadata?.candidatesTokenCount || 0,
+      totalTokens: response.usageMetadata?.totalTokenCount || 0,
+    };
+
+    // Deduct credits (unless super admin)
+    if (!isSuperAdmin) {
+      const deductResult = await deductCredits(
+        userId,
+        tokenUsage.totalTokens,
+        'garbage_analysis',
+        modelTier
+      );
+
+      if (!deductResult.success) {
+        throw new Error(deductResult.message || 'Failed to deduct credits');
+      }
+    }
+
     // Track token usage if callback provided
-    if (onTokenUsage && response.usageMetadata) {
-      onTokenUsage({
-        promptTokens: response.usageMetadata.promptTokenCount || 0,
-        completionTokens: response.usageMetadata.candidatesTokenCount || 0,
-        totalTokens: response.usageMetadata.totalTokenCount || 0,
-      });
+    if (onTokenUsage) {
+      onTokenUsage(tokenUsage);
     }
 
     // Parse JSON response
@@ -198,12 +241,29 @@ export interface ChatMessage {
  * General AI Chat Assistant
  */
 export async function chatWithAI(
+  userId: string,
+  userTier: string,
   messages: ChatMessage[],
   language: string = 'en',
+  modelTier: AIModelTier = 'lite',
   onTokenUsage?: TokenUsageCallback
 ): Promise<string> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+    // Check if user is super admin (unlimited credits)
+    const isSuperAdmin = userTier === 'SUPERADMIN';
+
+    // Check if user can use this model
+    if (!isSuperAdmin && !canUseModel(userTier, modelTier)) {
+      throw new Error(`Your subscription plan does not support ${modelTier} model. Please upgrade or choose a different model.`);
+    }
+
+    // Check and reset credits if needed (unless super admin)
+    if (!isSuperAdmin) {
+      await checkAndResetCredits(userId, userTier);
+    }
+
+    const modelName = GEMINI_MODELS[modelTier];
+    const model = genAI.getGenerativeModel({ model: modelName });
 
     // Build conversation history (exclude last message)
     let history = messages.slice(0, -1).map(msg => ({
@@ -223,13 +283,30 @@ export async function chatWithAI(
     const result = await chat.sendMessage(lastMessage);
     const response = await result.response;
 
+    // Get token usage
+    const tokenUsage: TokenUsage = {
+      promptTokens: response.usageMetadata?.promptTokenCount || 0,
+      completionTokens: response.usageMetadata?.candidatesTokenCount || 0,
+      totalTokens: response.usageMetadata?.totalTokenCount || 0,
+    };
+
+    // Deduct credits (unless super admin)
+    if (!isSuperAdmin) {
+      const deductResult = await deductCredits(
+        userId,
+        tokenUsage.totalTokens,
+        'ai_chat',
+        modelTier
+      );
+
+      if (!deductResult.success) {
+        throw new Error(deductResult.message || 'Failed to deduct credits');
+      }
+    }
+
     // Track token usage if callback provided
-    if (onTokenUsage && response.usageMetadata) {
-      onTokenUsage({
-        promptTokens: response.usageMetadata.promptTokenCount || 0,
-        completionTokens: response.usageMetadata.candidatesTokenCount || 0,
-        totalTokens: response.usageMetadata.totalTokenCount || 0,
-      });
+    if (onTokenUsage) {
+      onTokenUsage(tokenUsage);
     }
 
     return response.text();
@@ -243,13 +320,30 @@ export async function chatWithAI(
  * Japanese Learning AI Assistant with JLPT level support
  */
 export async function chatJapaneseLearning(
+  userId: string,
+  userTier: string,
   messages: ChatMessage[],
   jlptLevel: 'N1' | 'N2' | 'N3' | 'N4' | 'N5',
   userLanguage: string = 'en',
+  modelTier: AIModelTier = 'lite',
   onTokenUsage?: TokenUsageCallback
 ): Promise<string> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+    // Check if user is super admin (unlimited credits)
+    const isSuperAdmin = userTier === 'SUPERADMIN';
+
+    // Check if user can use this model
+    if (!isSuperAdmin && !canUseModel(userTier, modelTier)) {
+      throw new Error(`Your subscription plan does not support ${modelTier} model. Please upgrade or choose a different model.`);
+    }
+
+    // Check and reset credits if needed (unless super admin)
+    if (!isSuperAdmin) {
+      await checkAndResetCredits(userId, userTier);
+    }
+
+    const modelName = GEMINI_MODELS[modelTier];
+    const model = genAI.getGenerativeModel({ model: modelName });
 
     // Convert language code to full language name
     const languageName = getLanguageName(userLanguage);
@@ -322,13 +416,30 @@ For example, if the language is Vietnamese, write {{会話|かいわ|hội tho�
     const result = await chat.sendMessage(lastMessage);
     const response = await result.response;
 
+    // Get token usage
+    const tokenUsage: TokenUsage = {
+      promptTokens: response.usageMetadata?.promptTokenCount || 0,
+      completionTokens: response.usageMetadata?.candidatesTokenCount || 0,
+      totalTokens: response.usageMetadata?.totalTokenCount || 0,
+    };
+
+    // Deduct credits (unless super admin)
+    if (!isSuperAdmin) {
+      const deductResult = await deductCredits(
+        userId,
+        tokenUsage.totalTokens,
+        'japanese_learning',
+        modelTier
+      );
+
+      if (!deductResult.success) {
+        throw new Error(deductResult.message || 'Failed to deduct credits');
+      }
+    }
+
     // Track token usage if callback provided
-    if (onTokenUsage && response.usageMetadata) {
-      onTokenUsage({
-        promptTokens: response.usageMetadata.promptTokenCount || 0,
-        completionTokens: response.usageMetadata.candidatesTokenCount || 0,
-        totalTokens: response.usageMetadata.totalTokenCount || 0,
-      });
+    if (onTokenUsage) {
+      onTokenUsage(tokenUsage);
     }
 
     return response.text();
@@ -342,12 +453,29 @@ For example, if the language is Vietnamese, write {{会話|かいわ|hội tho�
  * Summarize web page content
  */
 export async function summarizeWebContent(
+  userId: string,
+  userTier: string,
   htmlContent: string,
   language: string = 'en',
+  modelTier: AIModelTier = 'lite',
   onTokenUsage?: TokenUsageCallback
 ): Promise<string> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+    // Check if user is super admin (unlimited credits)
+    const isSuperAdmin = userTier === 'SUPERADMIN';
+
+    // Check if user can use this model
+    if (!isSuperAdmin && !canUseModel(userTier, modelTier)) {
+      throw new Error(`Your subscription plan does not support ${modelTier} model. Please upgrade or choose a different model.`);
+    }
+
+    // Check and reset credits if needed (unless super admin)
+    if (!isSuperAdmin) {
+      await checkAndResetCredits(userId, userTier);
+    }
+
+    const modelName = GEMINI_MODELS[modelTier];
+    const model = genAI.getGenerativeModel({ model: modelName });
 
     const languageMap: { [key: string]: string } = {
       en: 'English',
@@ -373,13 +501,30 @@ ${htmlContent.substring(0, 10000)}...`; // Limit content to avoid token limits
     const result = await model.generateContent(prompt);
     const response = await result.response;
 
+    // Get token usage
+    const tokenUsage: TokenUsage = {
+      promptTokens: response.usageMetadata?.promptTokenCount || 0,
+      completionTokens: response.usageMetadata?.candidatesTokenCount || 0,
+      totalTokens: response.usageMetadata?.totalTokenCount || 0,
+    };
+
+    // Deduct credits (unless super admin)
+    if (!isSuperAdmin) {
+      const deductResult = await deductCredits(
+        userId,
+        tokenUsage.totalTokens,
+        'web_summary',
+        modelTier
+      );
+
+      if (!deductResult.success) {
+        throw new Error(deductResult.message || 'Failed to deduct credits');
+      }
+    }
+
     // Track token usage if callback provided
-    if (onTokenUsage && response.usageMetadata) {
-      onTokenUsage({
-        promptTokens: response.usageMetadata.promptTokenCount || 0,
-        completionTokens: response.usageMetadata.candidatesTokenCount || 0,
-        totalTokens: response.usageMetadata.totalTokenCount || 0,
-      });
+    if (onTokenUsage) {
+      onTokenUsage(tokenUsage);
     }
 
     return response.text();
@@ -393,13 +538,30 @@ ${htmlContent.substring(0, 10000)}...`; // Limit content to avoid token limits
  * Answer question about web page content
  */
 export async function askAboutWebContent(
+  userId: string,
+  userTier: string,
   htmlContent: string,
   question: string,
   language: string = 'en',
+  modelTier: AIModelTier = 'lite',
   onTokenUsage?: TokenUsageCallback
 ): Promise<string> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+    // Check if user is super admin (unlimited credits)
+    const isSuperAdmin = userTier === 'SUPERADMIN';
+
+    // Check if user can use this model
+    if (!isSuperAdmin && !canUseModel(userTier, modelTier)) {
+      throw new Error(`Your subscription plan does not support ${modelTier} model. Please upgrade or choose a different model.`);
+    }
+
+    // Check and reset credits if needed (unless super admin)
+    if (!isSuperAdmin) {
+      await checkAndResetCredits(userId, userTier);
+    }
+
+    const modelName = GEMINI_MODELS[modelTier];
+    const model = genAI.getGenerativeModel({ model: modelName });
 
     const languageMap: { [key: string]: string } = {
       en: 'English',
@@ -441,13 +603,30 @@ Remember: Respond in the SAME LANGUAGE as the question above.`;
     const result = await model.generateContent(prompt);
     const response = await result.response;
 
+    // Get token usage
+    const tokenUsage: TokenUsage = {
+      promptTokens: response.usageMetadata?.promptTokenCount || 0,
+      completionTokens: response.usageMetadata?.candidatesTokenCount || 0,
+      totalTokens: response.usageMetadata?.totalTokenCount || 0,
+    };
+
+    // Deduct credits (unless super admin)
+    if (!isSuperAdmin) {
+      const deductResult = await deductCredits(
+        userId,
+        tokenUsage.totalTokens,
+        'web_qa',
+        modelTier
+      );
+
+      if (!deductResult.success) {
+        throw new Error(deductResult.message || 'Failed to deduct credits');
+      }
+    }
+
     // Track token usage if callback provided
-    if (onTokenUsage && response.usageMetadata) {
-      onTokenUsage({
-        promptTokens: response.usageMetadata.promptTokenCount || 0,
-        completionTokens: response.usageMetadata.candidatesTokenCount || 0,
-        totalTokens: response.usageMetadata.totalTokenCount || 0,
-      });
+    if (onTokenUsage) {
+      onTokenUsage(tokenUsage);
     }
 
     return response.text();
@@ -461,12 +640,29 @@ Remember: Respond in the SAME LANGUAGE as the question above.`;
  * Translate and explain Japanese text
  */
 export async function translateJapanese(
+  userId: string,
+  userTier: string,
   japaneseText: string,
   targetLanguage: string = 'en',
+  modelTier: AIModelTier = 'lite',
   onTokenUsage?: TokenUsageCallback
 ): Promise<string> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+    // Check if user is super admin (unlimited credits)
+    const isSuperAdmin = userTier === 'SUPERADMIN';
+
+    // Check if user can use this model
+    if (!isSuperAdmin && !canUseModel(userTier, modelTier)) {
+      throw new Error(`Your subscription plan does not support ${modelTier} model. Please upgrade or choose a different model.`);
+    }
+
+    // Check and reset credits if needed (unless super admin)
+    if (!isSuperAdmin) {
+      await checkAndResetCredits(userId, userTier);
+    }
+
+    const modelName = GEMINI_MODELS[modelTier];
+    const model = genAI.getGenerativeModel({ model: modelName });
 
     const languageMap: { [key: string]: string } = {
       en: 'English',
@@ -525,13 +721,30 @@ Now analyze the text and provide your response:`;
     const result = await model.generateContent(prompt);
     const response = await result.response;
 
+    // Get token usage
+    const tokenUsage: TokenUsage = {
+      promptTokens: response.usageMetadata?.promptTokenCount || 0,
+      completionTokens: response.usageMetadata?.candidatesTokenCount || 0,
+      totalTokens: response.usageMetadata?.totalTokenCount || 0,
+    };
+
+    // Deduct credits (unless super admin)
+    if (!isSuperAdmin) {
+      const deductResult = await deductCredits(
+        userId,
+        tokenUsage.totalTokens,
+        'japanese_translation',
+        modelTier
+      );
+
+      if (!deductResult.success) {
+        throw new Error(deductResult.message || 'Failed to deduct credits');
+      }
+    }
+
     // Track token usage if callback provided
-    if (onTokenUsage && response.usageMetadata) {
-      onTokenUsage({
-        promptTokens: response.usageMetadata.promptTokenCount || 0,
-        completionTokens: response.usageMetadata.candidatesTokenCount || 0,
-        totalTokens: response.usageMetadata.totalTokenCount || 0,
-      });
+    if (onTokenUsage) {
+      onTokenUsage(tokenUsage);
     }
 
     return response.text();
