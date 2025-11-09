@@ -388,6 +388,7 @@ export default function AIChatScreen() {
       {/* Credit Display */}
       <View style={{ padding: 16, paddingBottom: 8 }}>
         <CreditDisplay
+          selectedModel={selectedModel}
           onInfoPress={() => setShowCreditInfo(true)}
           showInfoIcon={true}
         />
@@ -455,15 +456,15 @@ export default function AIChatScreen() {
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t('chatSettings', 'Chat Settings')}</Text>
 
-            {/* AI Model Selector */}
-            <ModelSelector
-              selectedModel={selectedModel}
-              onModelChange={setSelectedModel}
-            />
+            <ScrollView style={styles.modalScrollView} showsVerticalScrollIndicator={false}>
+              {/* AI Model Selector */}
+              <ModelSelector
+                selectedModel={selectedModel}
+                onModelChange={setSelectedModel}
+              />
 
-            {/* Translation Language Section */}
-            <Text style={styles.sectionTitle}>{t('translationLanguage', 'Translation Language')}</Text>
-            <ScrollView style={styles.languageScrollView}>
+              {/* Translation Language Section */}
+              <Text style={styles.sectionTitle}>{t('translationLanguage', 'Translation Language')}</Text>
               {translationLanguages.map((lang) => (
                 <TouchableOpacity
                   key={lang.code}
@@ -652,6 +653,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     padding: 20,
     paddingBottom: 40,
+    maxHeight: '80%',
   },
   modalTitle: {
     fontSize: 20,
@@ -660,14 +662,15 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textAlign: 'center',
   },
+  modalScrollView: {
+    flexGrow: 0,
+  },
   sectionTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#1F2937',
     marginBottom: 12,
-  },
-  languageScrollView: {
-    maxHeight: 300,
+    marginTop: 16,
   },
   levelOption: {
     flexDirection: 'row',

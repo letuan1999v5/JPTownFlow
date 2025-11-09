@@ -185,6 +185,7 @@ export default function AITranslatorScreen() {
       {/* Credit Display */}
       <View style={{ padding: 16, paddingBottom: 8 }}>
         <CreditDisplay
+          selectedModel={selectedModel}
           onInfoPress={() => setShowCreditInfo(true)}
           showInfoIcon={true}
         />
@@ -253,11 +254,13 @@ export default function AITranslatorScreen() {
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t('settings', 'Settings')}</Text>
 
-            {/* AI Model Selector */}
-            <ModelSelector
-              selectedModel={selectedModel}
-              onModelChange={setSelectedModel}
-            />
+            <ScrollView style={styles.modalScrollView} showsVerticalScrollIndicator={false}>
+              {/* AI Model Selector */}
+              <ModelSelector
+                selectedModel={selectedModel}
+                onModelChange={setSelectedModel}
+              />
+            </ScrollView>
 
             <TouchableOpacity
               style={styles.modalCloseButton}
@@ -441,6 +444,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     padding: 20,
     paddingBottom: 40,
+    maxHeight: '80%',
   },
   modalTitle: {
     fontSize: 20,
@@ -448,6 +452,9 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     marginBottom: 20,
     textAlign: 'center',
+  },
+  modalScrollView: {
+    flexGrow: 0,
   },
   modalCloseButton: {
     marginTop: 8,

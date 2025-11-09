@@ -423,6 +423,7 @@ export default function JapaneseLearningScreen() {
       {/* Credit Display */}
       <View style={{ padding: 16, paddingBottom: 8 }}>
         <CreditDisplay
+          selectedModel={selectedModel}
           onInfoPress={() => setShowCreditInfo(true)}
           showInfoIcon={true}
         />
@@ -494,34 +495,34 @@ export default function JapaneseLearningScreen() {
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t('chatSettings', 'Chat Settings')}</Text>
 
-            {/* AI Model Selector */}
-            <ModelSelector
-              selectedModel={selectedModel}
-              onModelChange={setSelectedModel}
-            />
+            <ScrollView style={styles.modalScrollView} showsVerticalScrollIndicator={false}>
+              {/* AI Model Selector */}
+              <ModelSelector
+                selectedModel={selectedModel}
+                onModelChange={setSelectedModel}
+              />
 
-            {/* JLPT Level Section */}
-            <Text style={styles.sectionTitle}>{t('jlptLevel', 'JLPT Level')}</Text>
-            {levels.map((level) => (
-              <TouchableOpacity
-                key={level}
-                style={[
-                  styles.levelOption,
-                  jlptLevel === level && styles.levelOptionSelected,
-                ]}
-                onPress={() => handleLevelChange(level)}
-              >
-                <View style={styles.levelOptionContent}>
-                  <Text style={styles.levelName}>JLPT {level}</Text>
-                  <Text style={styles.levelDesc}>{levelDescriptions[level]}</Text>
-                </View>
-                {jlptLevel === level && <Text style={styles.checkmark}>✓</Text>}
-              </TouchableOpacity>
-            ))}
+              {/* JLPT Level Section */}
+              <Text style={styles.sectionTitle}>{t('jlptLevel', 'JLPT Level')}</Text>
+              {levels.map((level) => (
+                <TouchableOpacity
+                  key={level}
+                  style={[
+                    styles.levelOption,
+                    jlptLevel === level && styles.levelOptionSelected,
+                  ]}
+                  onPress={() => handleLevelChange(level)}
+                >
+                  <View style={styles.levelOptionContent}>
+                    <Text style={styles.levelName}>JLPT {level}</Text>
+                    <Text style={styles.levelDesc}>{levelDescriptions[level]}</Text>
+                  </View>
+                  {jlptLevel === level && <Text style={styles.checkmark}>✓</Text>}
+                </TouchableOpacity>
+              ))}
 
-            {/* Translation Language Section */}
-            <Text style={[styles.sectionTitle, { marginTop: 24 }]}>{t('translationLanguage', 'Translation Language')}</Text>
-            <ScrollView style={styles.languageScrollView}>
+              {/* Translation Language Section */}
+              <Text style={styles.sectionTitle}>{t('translationLanguage', 'Translation Language')}</Text>
               {translationLanguages.map((lang) => (
                 <TouchableOpacity
                   key={lang.code}
@@ -686,6 +687,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     padding: 20,
     paddingBottom: 40,
+    maxHeight: '80%',
   },
   modalTitle: {
     fontSize: 20,
@@ -694,14 +696,15 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textAlign: 'center',
   },
+  modalScrollView: {
+    flexGrow: 0,
+  },
   sectionTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#1F2937',
     marginBottom: 12,
-  },
-  languageScrollView: {
-    maxHeight: 200,
+    marginTop: 16,
   },
   levelOption: {
     flexDirection: 'row',
