@@ -4,6 +4,8 @@ import { Platform } from 'react-native';
 import { initializeApp, getApps } from 'firebase/app';
 import { getFirestore, initializeFirestore, CACHE_SIZE_UNLIMITED } from 'firebase/firestore';
 
+console.log('[Firebase] Loading firebaseConfig.TS (FALLBACK) - Platform:', Platform.OS);
+
 const firebaseConfig = {
 apiKey: process.env.EXPO_PUBLIC_API_KEY,
 authDomain: process.env.EXPO_PUBLIC_AUTH_DOMAIN,
@@ -28,6 +30,7 @@ if (Platform.OS === 'web') {
   // Web: Use default auth
   const { getAuth } = require('firebase/auth');
   auth = getAuth(app);
+  console.log('[Firebase] Initialized Auth for Web');
 } else {
   // Native: Use AsyncStorage persistence
   const { initializeAuth, getAuth, getReactNativePersistence } = require('firebase/auth');
@@ -40,24 +43,26 @@ if (Platform.OS === 'web') {
     auth = initializeAuth(app, {
       persistence: getReactNativePersistence(AsyncStorage)
     });
+    console.log('[Firebase] Initialized Auth with AsyncStorage persistence for React Native');
   } catch (error: any) {
     // If auth is already initialized (e.g., during hot reload), get the existing instance
     // The existing instance should already have AsyncStorage persistence from the first initialization
     if (error.code === 'auth/already-initialized') {
       auth = getAuth(app);
+      console.log('[Firebase] Auth already initialized, using existing instance');
     } else {
+      console.error('[Firebase] Error initializing Auth:', error);
       throw error;
     }
   }
 }
 
-// Initialize Firestore with improved settings
+// Initialize Firestore
+// CRITICAL: Must call initializeFirestore BEFORE getFirestore
+// Otherwise getFirestore auto-initializes with DEFAULT settings!
 let db;
 try {
-  // Try to get existing instance first
-  db = getFirestore(app);
-} catch (error) {
-  // If not initialized, initialize with custom settings optimized for React Native
+  // Always try to initialize with custom settings FIRST
   const firestoreSettings: any = {
     cacheSizeBytes: CACHE_SIZE_UNLIMITED,
     ignoreUndefinedProperties: true,
@@ -68,13 +73,16 @@ try {
     // Web: Disable experimental long polling to prevent WebChannel errors
     firestoreSettings.experimentalForceLongPolling = false;
     firestoreSettings.experimentalAutoDetectLongPolling = true;
-  } else {
-    // React Native: Enable long polling for better mobile network handling
-    // This helps with unstable network connections
-    firestoreSettings.experimentalForceLongPolling = true;
   }
+  // React Native: Use default settings (no forced long polling)
+  // experimentalForceLongPolling can cause connection issues
 
   db = initializeFirestore(app, firestoreSettings);
+  console.log('[Firebase] Initialized Firestore with custom settings');
+} catch (error: any) {
+  // If already initialized (e.g., during hot reload), get existing instance
+  db = getFirestore(app);
+  console.log('[Firebase] Firestore already initialized, using existing instance');
 }
 
 export { app, auth, db };

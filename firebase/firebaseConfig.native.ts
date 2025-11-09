@@ -2,8 +2,10 @@
 
 import { initializeApp, getApps } from 'firebase/app';
 import { initializeAuth, getAuth, getReactNativePersistence } from 'firebase/auth';
-import { getFirestore, initializeFirestore, CACHE_SIZE_UNLIMITED } from 'firebase/firestore';
+import { getFirestore } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+console.log('[Firebase] Loading firebaseConfig.NATIVE.ts for React Native');
 
 const firebaseConfig = {
 apiKey: process.env.EXPO_PUBLIC_API_KEY,
@@ -15,55 +17,35 @@ appId: process.env.EXPO_PUBLIC_APP_ID,
 measurementId: process.env.EXPO_PUBLIC_MEASUREMENT_ID,
 };
 
-// Validate Firebase configuration
-if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
-  console.error('Firebase configuration is missing required fields. Please check your .env file.');
-  console.error('Required: EXPO_PUBLIC_API_KEY, EXPO_PUBLIC_PROJECT_ID');
-}
-
 // Initialize Firebase App (check if already initialized)
 let app;
 if (getApps().length === 0) {
   app = initializeApp(firebaseConfig);
+  console.log('[Firebase] Initialized new Firebase app');
 } else {
   app = getApps()[0];
+  console.log('[Firebase] Using existing Firebase app');
 }
 
-// Initialize Auth with AsyncStorage persistence for React Native
-// This ensures auth state persists between sessions
+// Initialize Auth with AsyncStorage persistence
 let auth;
 try {
-  // Always try to initialize with AsyncStorage persistence first
   auth = initializeAuth(app, {
     persistence: getReactNativePersistence(AsyncStorage)
   });
+  console.log('[Firebase] Initialized Auth with AsyncStorage persistence');
 } catch (error: any) {
-  // If auth is already initialized (e.g., during hot reload), get the existing instance
-  // The existing instance should already have AsyncStorage persistence from the first initialization
   if (error.code === 'auth/already-initialized') {
     auth = getAuth(app);
+    console.log('[Firebase] Auth already initialized, getting existing instance');
   } else {
+    console.error('[Firebase] Error initializing auth:', error);
     throw error;
   }
 }
 
-// Initialize Firestore with React Native optimizations
-// IMPORTANT: Must call initializeFirestore BEFORE getFirestore
-// Otherwise, getFirestore will auto-initialize with default settings
-let db;
-try {
-  // Always try to initialize with custom settings FIRST
-  db = initializeFirestore(app, {
-    cacheSizeBytes: CACHE_SIZE_UNLIMITED,
-    // Enable long polling for better mobile network handling
-    // This helps with unstable network connections on mobile devices
-    experimentalForceLongPolling: true,
-    // Ignore undefined properties
-    ignoreUndefinedProperties: true,
-  });
-} catch (error: any) {
-  // If already initialized (e.g., during hot reload), get existing instance
-  db = getFirestore(app);
-}
+// Initialize Firestore
+const db = getFirestore(app);
+console.log('[Firebase] Initialized Firestore');
 
 export { app, auth, db };
