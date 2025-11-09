@@ -18,6 +18,8 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Send, Star, List, Settings } from 'lucide-react-native';
 import { chatWithAI, ChatMessage, TokenUsage } from '../services/geminiService';
 import { useAuth } from '../context/AuthContext';
+import { useSubscription } from '../context/SubscriptionContext';
+import { CreditDisplay, CreditInfoModal } from '../components/credits';
 import { doc, setDoc, getDoc, Timestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig';
 
@@ -40,7 +42,9 @@ export default function AIChatScreen() {
     i18n.language as TranslationLanguage
   );
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showCreditInfo, setShowCreditInfo] = useState(false);
   const [isImportant, setIsImportant] = useState(false);
+  const { creditBalance, refreshCreditBalance } = useSubscription();
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
@@ -273,12 +277,32 @@ export default function AIChatScreen() {
 
       // Save to Firebase
       saveChatHistory(updatedMessages);
-    } catch (error) {
-      const errorMessage: ChatMessage = {
-        role: 'assistant',
-        content: t('aiError', 'Sorry, I encountered an error. Please try again.'),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+
+      // Refresh credit balance to update UI
+      await refreshCreditBalance();
+    } catch (error: any) {
+      console.error('AI error:', error);
+
+      // Check if it's a credit error
+      if (error.message?.includes('Insufficient credits') ||
+          error.message?.includes('Failed to deduct credits')) {
+        Alert.alert(
+          t('insufficientCredits', 'Insufficient Credits'),
+          t('insufficientCreditsMessage', 'You have run out of credits. Please wait for your daily/monthly reset or upgrade your plan for more credits.'),
+          [
+            { text: t('ok', 'OK') },
+            { text: t('viewPlans', 'View Plans'), onPress: () => router.push('/(tabs)/premium') }
+          ]
+        );
+        // Refresh credit balance to show current state
+        await refreshCreditBalance();
+      } else {
+        const errorMessage: ChatMessage = {
+          role: 'assistant',
+          content: error.message || t('aiError', 'Sorry, I encountered an error. Please try again.'),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      }
     } finally {
       setLoading(false);
     }
@@ -357,6 +381,14 @@ export default function AIChatScreen() {
             <Settings size={22} color="#2563EB" />
           </TouchableOpacity>
         </View>
+      </View>
+
+      {/* Credit Display */}
+      <View style={{ padding: 16, paddingBottom: 8 }}>
+        <CreditDisplay
+          onInfoPress={() => setShowCreditInfo(true)}
+          showInfoIcon={true}
+        />
       </View>
 
       {/* Messages */}
@@ -450,6 +482,12 @@ export default function AIChatScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Credit Info Modal */}
+      <CreditInfoModal
+        visible={showCreditInfo}
+        onClose={() => setShowCreditInfo(false)}
+      />
     </KeyboardAvoidingView>
   );
 }

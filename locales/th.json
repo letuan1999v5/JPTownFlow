@@ -449,5 +449,8 @@
   "modelCostLow": "ต่ำ",
   "modelCostMedium": "ปานกลาง",
   "modelCostHigh": "สูง",
-  "upgradeToUseModel": "อัปเกรดเป็น {tier} เพื่อใช้รุ่นนี้"
+  "upgradeToUseModel": "อัปเกรดเป็น {tier} เพื่อใช้รุ่นนี้",
+  "insufficientCredits": "เครดิตไม่เพียงพอ",
+  "insufficientCreditsMessage": "คุณใช้เครดิตหมดแล้ว โปรดรอการรีเซ็ตรายวัน/รายเดือน หรือยูปเกรดแพ็กเกจของคุณเพื่อได้เครดิตเพิ่มเติม",
+  "viewPlans": "ดูแพ็กเกจ"
 }

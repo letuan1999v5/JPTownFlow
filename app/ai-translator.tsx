@@ -17,6 +17,8 @@ import { ArrowLeft, Send, Languages } from 'lucide-react-native';
 import { Alert } from 'react-native';
 import { translateJapanese, TokenUsage } from '../services/geminiService';
 import { useAuth } from '../context/AuthContext';
+import { useSubscription } from '../context/SubscriptionContext';
+import { CreditDisplay, CreditInfoModal } from '../components/credits';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -40,6 +42,8 @@ export default function AITranslatorScreen() {
   ]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showCreditInfo, setShowCreditInfo] = useState(false);
+  const { creditBalance, refreshCreditBalance } = useSubscription();
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -89,13 +93,32 @@ export default function AITranslatorScreen() {
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
-    } catch (error) {
+
+      // Refresh credit balance to update UI
+      await refreshCreditBalance();
+    } catch (error: any) {
       console.error('AI Translator error:', error);
-      const errorMessage: Message = {
-        role: 'assistant',
-        content: t('aiError', 'Sorry, I encountered an error. Please try again.'),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+
+      // Check if it's a credit error
+      if (error.message?.includes('Insufficient credits') ||
+          error.message?.includes('Failed to deduct credits')) {
+        Alert.alert(
+          t('insufficientCredits', 'Insufficient Credits'),
+          t('insufficientCreditsMessage', 'You have run out of credits. Please wait for your daily/monthly reset or upgrade your plan for more credits.'),
+          [
+            { text: t('ok', 'OK') },
+            { text: t('viewPlans', 'View Plans'), onPress: () => router.push('/(tabs)/premium') }
+          ]
+        );
+        // Refresh credit balance to show current state
+        await refreshCreditBalance();
+      } else {
+        const errorMessage: Message = {
+          role: 'assistant',
+          content: error.message || t('aiError', 'Sorry, I encountered an error. Please try again.'),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      }
     } finally {
       setLoading(false);
     }
@@ -153,6 +176,14 @@ export default function AITranslatorScreen() {
         </View>
       </View>
 
+      {/* Credit Display */}
+      <View style={{ padding: 16, paddingBottom: 8 }}>
+        <CreditDisplay
+          onInfoPress={() => setShowCreditInfo(true)}
+          showInfoIcon={true}
+        />
+      </View>
+
       {/* Messages */}
       <ScrollView
         ref={scrollViewRef}
@@ -204,6 +235,12 @@ export default function AITranslatorScreen() {
           <Send size={20} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
+
+      {/* Credit Info Modal */}
+      <CreditInfoModal
+        visible={showCreditInfo}
+        onClose={() => setShowCreditInfo(false)}
+      />
     </KeyboardAvoidingView>
   );
 }

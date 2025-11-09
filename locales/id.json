@@ -449,5 +449,8 @@
   "modelCostLow": "Rendah",
   "modelCostMedium": "Sedang",
   "modelCostHigh": "Tinggi",
-  "upgradeToUseModel": "Upgrade ke {tier} untuk menggunakan model ini"
+  "upgradeToUseModel": "Upgrade ke {tier} untuk menggunakan model ini",
+  "insufficientCredits": "Kredit Tidak Cukup",
+  "insufficientCreditsMessage": "Anda telah kehabisan kredit. Silakan tunggu penyetelan ulang harian/bulanan atau tingkatkan paket Anda untuk mendapatkan lebih banyak kredit.",
+  "viewPlans": "Lihat Paket"
 }

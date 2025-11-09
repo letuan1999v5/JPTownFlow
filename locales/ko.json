@@ -449,5 +449,8 @@
   "modelCostLow": "낮음",
   "modelCostMedium": "중간",
   "modelCostHigh": "높음",
-  "upgradeToUseModel": "{tier}로 업그레이드하여 이 모델을 사용하세요"
+  "upgradeToUseModel": "{tier}로 업그레이드하여 이 모델을 사용하세요",
+  "insufficientCredits": "크레딧 부족",
+  "insufficientCreditsMessage": "크레딧이 부족합니다. 일일/월간 재설정을 기다리거나 플랜을 업그레이드하여 더 많은 크레딧을 얻으세요.",
+  "viewPlans": "플랜 보기"
 }
