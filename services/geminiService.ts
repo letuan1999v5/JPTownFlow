@@ -180,7 +180,8 @@ Respond in JSON format:
     if (!isSuperAdmin) {
       const deductResult = await deductCredits(
         userId,
-        tokenUsage.totalTokens,
+        tokenUsage.promptTokens,
+        tokenUsage.completionTokens,
         'garbage_analysis',
         modelTier
       );
@@ -294,7 +295,8 @@ export async function chatWithAI(
     if (!isSuperAdmin) {
       const deductResult = await deductCredits(
         userId,
-        tokenUsage.totalTokens,
+        tokenUsage.promptTokens,
+        tokenUsage.completionTokens,
         'ai_chat',
         modelTier
       );
@@ -427,7 +429,8 @@ For example, if the language is Vietnamese, write {{会話|かいわ|hội tho�
     if (!isSuperAdmin) {
       const deductResult = await deductCredits(
         userId,
-        tokenUsage.totalTokens,
+        tokenUsage.promptTokens,
+        tokenUsage.completionTokens,
         'japanese_learning',
         modelTier
       );
@@ -512,7 +515,8 @@ ${htmlContent.substring(0, 10000)}...`; // Limit content to avoid token limits
     if (!isSuperAdmin) {
       const deductResult = await deductCredits(
         userId,
-        tokenUsage.totalTokens,
+        tokenUsage.promptTokens,
+        tokenUsage.completionTokens,
         'web_summary',
         modelTier
       );
@@ -614,7 +618,8 @@ Remember: Respond in the SAME LANGUAGE as the question above.`;
     if (!isSuperAdmin) {
       const deductResult = await deductCredits(
         userId,
-        tokenUsage.totalTokens,
+        tokenUsage.promptTokens,
+        tokenUsage.completionTokens,
         'web_qa',
         modelTier
       );
@@ -732,7 +737,8 @@ Now analyze the text and provide your response:`;
     if (!isSuperAdmin) {
       const deductResult = await deductCredits(
         userId,
-        tokenUsage.totalTokens,
+        tokenUsage.promptTokens,
+        tokenUsage.completionTokens,
         'japanese_translation',
         modelTier
       );
