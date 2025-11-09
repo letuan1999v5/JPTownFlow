@@ -23,6 +23,11 @@ import {
   checkAndResetCredits,
   initializeCreditBalance
 } from '../services/creditsService';
+import {
+  checkAndTransitionSubscription,
+  changeSubscription,
+  getActiveTier
+} from '../services/subscriptionService';
 
 interface SubscriptionContextType {
   subscription: UserSubscription | null;
@@ -53,29 +58,50 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
       }
 
       try {
-        const userDocRef = doc(db, 'users', user.uid);
-        const userDoc = await getDoc(userDocRef);
+        // First check and transition if subscription expired
+        await checkAndTransitionSubscription(user.uid);
 
+        // Load subscription from subscriptions collection
+        const subscriptionRef = doc(db, 'subscriptions', user.uid);
+        const subscriptionSnap = await getDoc(subscriptionRef);
+
+        let userSubscription: UserSubscription;
         let userTier: SubscriptionTier = 'FREE';
 
-        if (userDoc.exists()) {
-          const data = userDoc.data();
-          userTier = data.subscription || 'FREE';
-          setSubscription({
-            tier: userTier,
-            startDate: data.subscriptionStartDate?.toDate() || null,
-            endDate: data.subscriptionEndDate?.toDate() || null,
-          });
+        if (subscriptionSnap.exists()) {
+          const data = subscriptionSnap.data();
+          userSubscription = {
+            tier: data.tier || 'FREE',
+            startDate: data.startDate?.toDate() || null,
+            endDate: data.endDate?.toDate() || null,
+            pendingTier: data.pendingTier,
+            pendingStartDate: data.pendingStartDate?.toDate(),
+          };
+          userTier = getActiveTier(userSubscription);
         } else {
-          // User document doesn't exist, set default FREE
-          setSubscription({
+          // No subscription document, create default FREE
+          const now = new Date();
+          const endDate = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000); // 1 year
+
+          userSubscription = {
             tier: 'FREE',
-            startDate: null,
-            endDate: null,
+            startDate: now,
+            endDate: endDate,
+          };
+
+          // Create subscription document
+          await setDoc(subscriptionRef, {
+            tier: 'FREE',
+            startDate: now,
+            endDate: endDate,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
           });
         }
 
-        // Load or initialize credit balance
+        setSubscription(userSubscription);
+
+        // Load or initialize credit balance (use active tier)
         let balance = await getCreditBalance(user.uid);
         if (!balance) {
           // Initialize credit balance for new user
@@ -106,32 +132,35 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
 
     setLoading(true);
     try {
-      const now = new Date();
-      const endDate = new Date();
-      endDate.setMonth(endDate.getMonth() + 1); // 1 month from now
+      const result = await changeSubscription(user.uid, tier);
 
-      const userDocRef = doc(db, 'users', user.uid);
-      await setDoc(userDocRef, {
-        subscription: tier,
-        subscriptionStartDate: serverTimestamp(),
-        subscriptionEndDate: endDate,
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
+      if (result.success) {
+        // Reload subscription and credit balance
+        const subscriptionRef = doc(db, 'subscriptions', user.uid);
+        const subscriptionSnap = await getDoc(subscriptionRef);
 
-      setSubscription({
-        tier,
-        startDate: now,
-        endDate,
-      });
+        if (subscriptionSnap.exists()) {
+          const data = subscriptionSnap.data();
+          const updatedSubscription: UserSubscription = {
+            tier: data.tier || 'FREE',
+            startDate: data.startDate?.toDate() || null,
+            endDate: data.endDate?.toDate() || null,
+            pendingTier: data.pendingTier,
+            pendingStartDate: data.pendingStartDate?.toDate(),
+          };
+          setSubscription(updatedSubscription);
 
-      // Reset credit balance with new tier
-      const newBalance = await checkAndResetCredits(user.uid, tier);
-      setCreditBalance(newBalance);
+          // Reload credit balance
+          const activeTier = getActiveTier(updatedSubscription);
+          const balance = await checkAndResetCredits(user.uid, activeTier);
+          setCreditBalance(balance);
+        }
+      }
 
       setLoading(false);
-      return true;
+      return result.success;
     } catch (error) {
-      console.error('Error upgrading subscription:', error);
+      console.error('Error changing subscription:', error);
       setLoading(false);
       return false;
     }
@@ -140,7 +169,7 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
   const hasFeature = (feature: string): boolean => {
     if (!subscription) return false;
 
-    const tier = subscription.tier;
+    const activeTier = getActiveTier(subscription);
 
     // Define features for each tier
     const features: Record<SubscriptionTier, string[]> = {
@@ -149,14 +178,15 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
       ULTRA: ['featureGarbageRules', 'featureBasicSearch', 'featureLanguageSupport', 'featureAIGarbageRecognition', 'featureAIImageTranslation', 'featureSubsidyNotifications', 'featureAdFree', 'featurePrioritySupport'],
     };
 
-    return features[tier]?.includes(feature) || false;
+    return features[activeTier]?.includes(feature) || false;
   };
 
   const refreshCreditBalance = async () => {
     if (!user || !subscription) return;
 
     try {
-      const balance = await checkAndResetCredits(user.uid, subscription.tier);
+      const activeTier = getActiveTier(subscription);
+      const balance = await checkAndResetCredits(user.uid, activeTier);
       setCreditBalance(balance);
     } catch (error) {
       console.error('Error refreshing credit balance:', error);
@@ -165,9 +195,10 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
 
   const canUseAIModel = (modelTier: AIModelTier): boolean => {
     if (!subscription) return false;
+    const activeTier = getActiveTier(subscription);
     // Super admin can use all models
-    if (subscription.tier === 'SUPERADMIN') return true;
-    return canUseModel(subscription.tier, modelTier);
+    if (activeTier === 'SUPERADMIN') return true;
+    return canUseModel(activeTier, modelTier);
   };
 
   const getTotalAvailableCredits = (): number => {
