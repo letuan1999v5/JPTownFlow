@@ -3,7 +3,7 @@ import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
-import { MessageCircle, BookOpen, Globe, Lock } from 'lucide-react-native';
+import { MessageCircle, BookOpen, Globe, Lock, Languages } from 'lucide-react-native';
 import { useAuth } from '../../context/AuthContext';
 
 export default function AIAssistantScreen() {
@@ -55,6 +55,14 @@ export default function AIAssistantScreen() {
       descKey: 'japaneseLearnDesc',
       color: '#10B981',
       route: '/japanese-chats-list',
+    },
+    {
+      id: 'translator',
+      icon: Languages,
+      titleKey: 'aiTranslatorTitle',
+      descKey: 'aiTranslatorDesc',
+      color: '#8B5CF6',
+      route: '/ai-translator',
     },
     {
       id: 'browser',
