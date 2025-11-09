@@ -6,6 +6,16 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 const API_KEY = process.env.EXPO_PUBLIC_GOOGLE_AI_API_KEY || '';
 const genAI = new GoogleGenerativeAI(API_KEY);
 
+// Token usage metadata interface
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+// Optional callback for token usage tracking (for super admin)
+export type TokenUsageCallback = (usage: TokenUsage) => void;
+
 // Map language codes to full language names for better AI understanding
 const getLanguageName = (languageCode: string): string => {
   const languageMap: Record<string, string> = {
@@ -37,7 +47,8 @@ export interface GarbageAnalysisResult {
 export async function analyzeGarbageImage(
   imageBase64: string,
   wasteCategories: any, // Rules từ Firestore
-  language: string = 'vi'
+  language: string = 'vi',
+  onTokenUsage?: TokenUsageCallback
 ): Promise<GarbageAnalysisResult> {
   try {
     // Get the generative model
@@ -132,6 +143,15 @@ Respond in JSON format:
     const response = await result.response;
     const text = response.text();
 
+    // Track token usage if callback provided
+    if (onTokenUsage && response.usageMetadata) {
+      onTokenUsage({
+        promptTokens: response.usageMetadata.promptTokenCount || 0,
+        completionTokens: response.usageMetadata.candidatesTokenCount || 0,
+        totalTokens: response.usageMetadata.totalTokenCount || 0,
+      });
+    }
+
     // Parse JSON response
     // Remove markdown code blocks if present
     const cleanedText = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
@@ -179,7 +199,8 @@ export interface ChatMessage {
  */
 export async function chatWithAI(
   messages: ChatMessage[],
-  language: string = 'en'
+  language: string = 'en',
+  onTokenUsage?: TokenUsageCallback
 ): Promise<string> {
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
@@ -201,6 +222,16 @@ export async function chatWithAI(
 
     const result = await chat.sendMessage(lastMessage);
     const response = await result.response;
+
+    // Track token usage if callback provided
+    if (onTokenUsage && response.usageMetadata) {
+      onTokenUsage({
+        promptTokens: response.usageMetadata.promptTokenCount || 0,
+        completionTokens: response.usageMetadata.candidatesTokenCount || 0,
+        totalTokens: response.usageMetadata.totalTokenCount || 0,
+      });
+    }
+
     return response.text();
   } catch (error) {
     console.error('Gemini Chat API error:', error);
@@ -214,7 +245,8 @@ export async function chatWithAI(
 export async function chatJapaneseLearning(
   messages: ChatMessage[],
   jlptLevel: 'N1' | 'N2' | 'N3' | 'N4' | 'N5',
-  userLanguage: string = 'en'
+  userLanguage: string = 'en',
+  onTokenUsage?: TokenUsageCallback
 ): Promise<string> {
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
@@ -289,6 +321,16 @@ For example, if the language is Vietnamese, write {{会話|かいわ|hội tho�
 
     const result = await chat.sendMessage(lastMessage);
     const response = await result.response;
+
+    // Track token usage if callback provided
+    if (onTokenUsage && response.usageMetadata) {
+      onTokenUsage({
+        promptTokens: response.usageMetadata.promptTokenCount || 0,
+        completionTokens: response.usageMetadata.candidatesTokenCount || 0,
+        totalTokens: response.usageMetadata.totalTokenCount || 0,
+      });
+    }
+
     return response.text();
   } catch (error) {
     console.error('Gemini Japanese Learning API error:', error);
@@ -301,7 +343,8 @@ For example, if the language is Vietnamese, write {{会話|かいわ|hội tho�
  */
 export async function summarizeWebContent(
   htmlContent: string,
-  language: string = 'en'
+  language: string = 'en',
+  onTokenUsage?: TokenUsageCallback
 ): Promise<string> {
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
@@ -329,6 +372,16 @@ ${htmlContent.substring(0, 10000)}...`; // Limit content to avoid token limits
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
+
+    // Track token usage if callback provided
+    if (onTokenUsage && response.usageMetadata) {
+      onTokenUsage({
+        promptTokens: response.usageMetadata.promptTokenCount || 0,
+        completionTokens: response.usageMetadata.candidatesTokenCount || 0,
+        totalTokens: response.usageMetadata.totalTokenCount || 0,
+      });
+    }
+
     return response.text();
   } catch (error) {
     console.error('Gemini Web Summary API error:', error);
@@ -342,7 +395,8 @@ ${htmlContent.substring(0, 10000)}...`; // Limit content to avoid token limits
 export async function askAboutWebContent(
   htmlContent: string,
   question: string,
-  language: string = 'en'
+  language: string = 'en',
+  onTokenUsage?: TokenUsageCallback
 ): Promise<string> {
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
@@ -386,6 +440,16 @@ Remember: Respond in the SAME LANGUAGE as the question above.`;
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
+
+    // Track token usage if callback provided
+    if (onTokenUsage && response.usageMetadata) {
+      onTokenUsage({
+        promptTokens: response.usageMetadata.promptTokenCount || 0,
+        completionTokens: response.usageMetadata.candidatesTokenCount || 0,
+        totalTokens: response.usageMetadata.totalTokenCount || 0,
+      });
+    }
+
     return response.text();
   } catch (error) {
     console.error('Gemini Web Q&A API error:', error);
@@ -398,7 +462,8 @@ Remember: Respond in the SAME LANGUAGE as the question above.`;
  */
 export async function translateJapanese(
   japaneseText: string,
-  targetLanguage: string = 'en'
+  targetLanguage: string = 'en',
+  onTokenUsage?: TokenUsageCallback
 ): Promise<string> {
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
@@ -459,6 +524,16 @@ Now analyze the text and provide your response:`;
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
+
+    // Track token usage if callback provided
+    if (onTokenUsage && response.usageMetadata) {
+      onTokenUsage({
+        promptTokens: response.usageMetadata.promptTokenCount || 0,
+        completionTokens: response.usageMetadata.candidatesTokenCount || 0,
+        totalTokens: response.usageMetadata.totalTokenCount || 0,
+      });
+    }
+
     return response.text();
   } catch (error) {
     console.error('Gemini Translation API error:', error);

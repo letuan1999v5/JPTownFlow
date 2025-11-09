@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Send, Star, List, Settings } from 'lucide-react-native';
-import { chatWithAI, ChatMessage } from '../services/geminiService';
+import { chatWithAI, ChatMessage, TokenUsage } from '../services/geminiService';
 import { useAuth } from '../context/AuthContext';
 import { doc, setDoc, getDoc, Timestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig';
@@ -27,11 +27,12 @@ export default function AIChatScreen() {
   const { t, i18n } = useTranslation();
   const router = useRouter();
   const { chatId } = useLocalSearchParams();
-  const { user, subscription } = useAuth();
+  const { user, subscription, role } = useAuth();
   const scrollViewRef = useRef<ScrollView>(null);
 
   // Check subscription status
   const hasSubscription = subscription === 'PRO' || subscription === 'ULTRA';
+  const isSuperAdmin = role === 'superadmin';
 
   const [currentChatId, setCurrentChatId] = useState<string | null>(
     typeof chatId === 'string' ? chatId : null
@@ -241,7 +242,20 @@ export default function AIChatScreen() {
     setLoading(true);
 
     try {
-      const response = await chatWithAI([...messages, userMessage], translationLanguage);
+      // Token usage callback for super admin
+      const onTokenUsage = isSuperAdmin ? (usage: TokenUsage) => {
+        Alert.alert(
+          '🔧 Token Usage (Super Admin)',
+          `Prompt: ${usage.promptTokens}\nCompletion: ${usage.completionTokens}\nTotal: ${usage.totalTokens}`,
+          [{ text: 'OK' }]
+        );
+      } : undefined;
+
+      const response = await chatWithAI(
+        [...messages, userMessage],
+        translationLanguage,
+        onTokenUsage
+      );
 
       const assistantMessage: ChatMessage = {
         role: 'assistant',

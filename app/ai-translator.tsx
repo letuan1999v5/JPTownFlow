@@ -14,7 +14,8 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Send, Languages } from 'lucide-react-native';
-import { translateJapanese } from '../services/geminiService';
+import { Alert } from 'react-native';
+import { translateJapanese, TokenUsage } from '../services/geminiService';
 import { useAuth } from '../context/AuthContext';
 
 interface Message {
@@ -25,11 +26,12 @@ interface Message {
 export default function AITranslatorScreen() {
   const { t, i18n } = useTranslation();
   const router = useRouter();
-  const { user, subscription } = useAuth();
+  const { user, subscription, role } = useAuth();
   const scrollViewRef = useRef<ScrollView>(null);
 
   // Check subscription status
   const hasSubscription = subscription === 'PRO' || subscription === 'ULTRA';
+  const isSuperAdmin = role === 'superadmin';
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -60,9 +62,19 @@ export default function AITranslatorScreen() {
     setLoading(true);
 
     try {
+      // Token usage callback for super admin
+      const onTokenUsage = isSuperAdmin ? (usage: TokenUsage) => {
+        Alert.alert(
+          '🔧 Token Usage (Super Admin)',
+          `Prompt: ${usage.promptTokens}\nCompletion: ${usage.completionTokens}\nTotal: ${usage.totalTokens}`,
+          [{ text: 'OK' }]
+        );
+      } : undefined;
+
       const response = await translateJapanese(
         userMessage.content,
-        i18n.language
+        i18n.language,
+        onTokenUsage
       );
 
       const assistantMessage: Message = {

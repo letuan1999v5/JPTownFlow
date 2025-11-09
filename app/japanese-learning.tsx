@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Send, Settings, Star, List } from 'lucide-react-native';
-import { chatJapaneseLearning, ChatMessage } from '../services/geminiService';
+import { chatJapaneseLearning, ChatMessage, TokenUsage } from '../services/geminiService';
 import TranslatableText, { TranslatableWord } from '../components/common/TranslatableText';
 import SaveToNotebookModal from '../components/vocabulary/SaveToNotebookModal';
 import { useAuth } from '../context/AuthContext';
@@ -30,11 +30,12 @@ export default function JapaneseLearningScreen() {
   const { t, i18n } = useTranslation();
   const router = useRouter();
   const { chatId } = useLocalSearchParams();
-  const { user, subscription } = useAuth();
+  const { user, subscription, role } = useAuth();
   const scrollViewRef = useRef<ScrollView>(null);
 
   // Check subscription status
   const hasSubscription = subscription === 'PRO' || subscription === 'ULTRA';
+  const isSuperAdmin = role === 'superadmin';
 
   const [currentChatId, setCurrentChatId] = useState<string | null>(
     typeof chatId === 'string' ? chatId : null
@@ -260,10 +261,20 @@ export default function JapaneseLearningScreen() {
     setLoading(true);
 
     try {
+      // Token usage callback for super admin
+      const onTokenUsage = isSuperAdmin ? (usage: TokenUsage) => {
+        Alert.alert(
+          '🔧 Token Usage (Super Admin)',
+          `Prompt: ${usage.promptTokens}\nCompletion: ${usage.completionTokens}\nTotal: ${usage.totalTokens}`,
+          [{ text: 'OK' }]
+        );
+      } : undefined;
+
       const response = await chatJapaneseLearning(
         [...messages, userMessage],
         jlptLevel,
-        translationLanguage
+        translationLanguage,
+        onTokenUsage
       );
 
       const assistantMessage: ChatMessage = {
