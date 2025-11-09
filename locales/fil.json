@@ -433,7 +433,7 @@
   "feature10000CreditsMonthly": "10000 Kredito bawat buwan",
   "featureCarryoverCredits": "Ang hindi nagamit na kredito ay ilipat sa susunod na buwan",
   "modelLite": "Lite",
-  "modelStandard": "Standard",
+  "modelFlash": "Standard",
   "modelPro": "Pro",
   "selectModel": "Pumili ng AI Model",
   "modelSelectionHelper": "Pumili ng modelo batay sa iyong pangangailangan. Ang mas mataas na mga modelo ay nagbibigay ng mas magandang katumpakan ngunit gumagamit ng mas maraming credits.",
