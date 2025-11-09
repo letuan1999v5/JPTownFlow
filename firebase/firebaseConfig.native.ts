@@ -2,7 +2,7 @@
 
 import { initializeApp, getApps } from 'firebase/app';
 import { initializeAuth, getAuth, getReactNativePersistence } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, CACHE_SIZE_UNLIMITED } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const firebaseConfig = {
@@ -15,6 +15,12 @@ appId: process.env.EXPO_PUBLIC_APP_ID,
 measurementId: process.env.EXPO_PUBLIC_MEASUREMENT_ID,
 };
 
+// Validate Firebase configuration
+if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+  console.error('Firebase configuration is missing required fields. Please check your .env file.');
+  console.error('Required: EXPO_PUBLIC_API_KEY, EXPO_PUBLIC_PROJECT_ID');
+}
+
 // Initialize Firebase App (check if already initialized)
 let app;
 if (getApps().length === 0) {
@@ -23,17 +29,39 @@ if (getApps().length === 0) {
   app = getApps()[0];
 }
 
-// Initialize Auth (check if already initialized)
+// Initialize Auth with AsyncStorage persistence for React Native
+// This ensures auth state persists between sessions
 let auth;
 try {
-  auth = getAuth(app);
-} catch (error) {
+  // Always try to initialize with AsyncStorage persistence first
   auth = initializeAuth(app, {
     persistence: getReactNativePersistence(AsyncStorage)
   });
+} catch (error: any) {
+  // If auth is already initialized (e.g., during hot reload), get the existing instance
+  // The existing instance should already have AsyncStorage persistence from the first initialization
+  if (error.code === 'auth/already-initialized') {
+    auth = getAuth(app);
+  } else {
+    throw error;
+  }
 }
 
-// Initialize Firestore
-const db = getFirestore(app);
+// Initialize Firestore with React Native optimizations
+let db;
+try {
+  // Try to get existing instance first
+  db = getFirestore(app);
+} catch (error) {
+  // If not initialized, initialize with settings optimized for React Native
+  db = initializeFirestore(app, {
+    cacheSizeBytes: CACHE_SIZE_UNLIMITED,
+    // Enable long polling for better mobile network handling
+    // This helps with unstable network connections on mobile devices
+    experimentalForceLongPolling: true,
+    // Ignore undefined properties
+    ignoreUndefinedProperties: true,
+  });
+}
 
 export { app, auth, db };
