@@ -32,17 +32,20 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.geminiChat = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const generative_ai_1 = require("@google/generative-ai");
 const server_1 = require("@google/generative-ai/server");
-const cors = __importStar(require("cors"));
+const cors_1 = __importDefault(require("cors"));
 // Initialize Firebase Admin
 admin.initializeApp();
 // Initialize CORS
-const corsHandler = cors({ origin: true });
+const corsHandler = (0, cors_1.default)({ origin: true });
 // Cache management constants
 const CACHE_TTL_MINUTES = 60;
 const CACHE_RENEWAL_THRESHOLD_MINUTES = 55;
@@ -71,7 +74,9 @@ function isCacheValid(cacheCreatedAt) {
  */
 async function renewCacheTTL(cacheManager, cacheId) {
     await cacheManager.update(cacheId, {
-        ttl: CACHE_TTL_MINUTES * 60,
+        cachedContent: {
+            ttlSeconds: CACHE_TTL_MINUTES * 60,
+        },
     });
     return new Date();
 }
@@ -106,8 +111,11 @@ async function createCachedContent(cacheManager, modelName, conversationHistory)
     const cacheResult = await cacheManager.create({
         model: modelName,
         contents: contents,
-        ttl: CACHE_TTL_MINUTES * 60,
+        ttlSeconds: CACHE_TTL_MINUTES * 60,
     });
+    if (!cacheResult.name) {
+        throw new Error('Cache creation failed: no cache ID returned');
+    }
     return {
         cacheId: cacheResult.name,
         createdAt: new Date(),
@@ -182,6 +190,7 @@ exports.geminiChat = functions.https.onRequest((request, response) => {
                         console.warn('Cache not found, falling back to full history');
                         useCachedContent = false;
                         cachedTokens = 0;
+                        apiResponse = undefined; // Reset apiResponse
                     }
                     else {
                         throw error;
@@ -220,6 +229,10 @@ exports.geminiChat = functions.https.onRequest((request, response) => {
                 const lastMessage = messages[messages.length - 1].content;
                 result = await chat.sendMessage(lastMessage);
                 apiResponse = await result.response;
+            }
+            // Ensure we have a valid response
+            if (!apiResponse) {
+                throw new Error('Failed to get API response');
             }
             // Create new cache after response (if conversation long enough)
             if (messages.length >= 2) {
