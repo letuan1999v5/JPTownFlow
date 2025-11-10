@@ -29,8 +29,6 @@ export interface CacheMetadata {
 // Cache management constants
 const CACHE_TTL_MINUTES = 60; // Google's cache TTL
 const CACHE_RENEWAL_THRESHOLD_MINUTES = 55; // Renew if older than this
-const MINIMUM_CACHE_TOKENS = 32769; // Google's minimum cache size requirement
-const ESTIMATED_CHARS_PER_TOKEN = 4; // Rough estimate for checking if content is long enough
 
 // Initialize Gemini AI
 const API_KEY = process.env.EXPO_PUBLIC_GOOGLE_AI_API_KEY || '';
@@ -114,57 +112,35 @@ async function deductCreditsWithCallback(
 }
 
 /**
- * Check if conversation is long enough for caching
- * @returns true if conversation meets minimum token requirement
- */
-function isConversationCacheable(conversationHistory: ChatMessage[]): boolean {
-  // Estimate total characters in conversation
-  const totalChars = conversationHistory.reduce((sum, msg) => sum + msg.content.length, 0);
-
-  // Estimate token count (rough approximation: 1 token ≈ 4 characters)
-  const estimatedTokens = totalChars / ESTIMATED_CHARS_PER_TOKEN;
-
-  // Check if meets minimum requirement (with 10% buffer for safety)
-  return estimatedTokens >= MINIMUM_CACHE_TOKENS * 0.9;
-}
-
-/**
  * Create a new cached content for conversation history
  * @returns Cache ID and metadata
+ *
+ * Note: Google requires minimum 32,769 tokens. If conversation is too short,
+ * API will throw error which is handled gracefully by caller.
  */
 async function createCachedContent(
   modelName: string,
   conversationHistory: ChatMessage[]
 ): Promise<CacheMetadata> {
-  try {
-    // Check if conversation is long enough for caching
-    if (!isConversationCacheable(conversationHistory)) {
-      throw new Error('Conversation too short for caching (minimum 32,769 tokens required)');
-    }
+  // Build contents array for caching
+  const contents = conversationHistory.map(msg => ({
+    role: msg.role === 'user' ? 'user' : 'model',
+    parts: [{ text: msg.content }],
+  }));
 
-    // Build contents array for caching
-    const contents = conversationHistory.map(msg => ({
-      role: msg.role === 'user' ? 'user' : 'model',
-      parts: [{ text: msg.content }],
-    }));
+  // Create cache using Google's caching API
+  // Let Google API validate token count - it will throw error if < 32,769 tokens
+  const cacheResult = await cacheManager.create({
+    model: modelName,
+    contents: contents,
+    ttl: CACHE_TTL_MINUTES * 60, // Convert to seconds
+  });
 
-    // Create cache using Google's caching API
-    // Note: Requires minimum 32,769 tokens (approximately 130,000 characters)
-    const cacheResult = await cacheManager.create({
-      model: modelName,
-      contents: contents,
-      ttl: CACHE_TTL_MINUTES * 60, // Convert to seconds
-    });
-
-    return {
-      cacheId: cacheResult.name, // e.g., "cachedContents/xyz-123"
-      createdAt: new Date(),
-      cachedTokenCount: cacheResult.usageMetadata?.totalTokenCount || 0,
-    };
-  } catch (error) {
-    console.error('Failed to create cache:', error);
-    throw new Error('Failed to create conversation cache');
-  }
+  return {
+    cacheId: cacheResult.name, // e.g., "cachedContents/xyz-123"
+    createdAt: new Date(),
+    cachedTokenCount: cacheResult.usageMetadata?.totalTokenCount || 0,
+  };
 }
 
 /**
