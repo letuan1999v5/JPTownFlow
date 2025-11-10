@@ -112,6 +112,7 @@ async function deductCreditsWithCallback(
 async function callGeminiCloudFunction(
   messages: ChatMessage[],
   modelTier: AIModelTier,
+  featureType: string,
   cacheId?: string,
   cacheCreatedAt?: Date,
   systemPrompt?: string
@@ -127,6 +128,7 @@ async function callGeminiCloudFunction(
     cacheId: string;
     createdAt: string;
   };
+  warnings?: string[];
 }> {
   const response = await fetch(CLOUD_FUNCTION_URL, {
     method: 'POST',
@@ -136,6 +138,7 @@ async function callGeminiCloudFunction(
     body: JSON.stringify({
       messages,
       modelTier,
+      featureType,
       cacheId,
       cacheCreatedAt: cacheCreatedAt?.toISOString(),
       systemPrompt,
@@ -382,45 +385,77 @@ export async function chatWithAI(
       await checkAndResetCredits(userId, userTier);
     }
 
-    const modelName = GEMINI_MODELS[modelTier];
     let cachedTokens = 0;
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let responseText = '';
 
     // ============================================
-    // API CALL - Direct to Gemini (uses Google's Implicit Caching)
+    // API CALL - Cloud Function or Direct
     // ============================================
-    // NOTE: Explicit caching removed - not compatible with React Native
-    // Google's Implicit Caching provides automatic 75-90% discount
-    // For 90% guaranteed discount, deploy Cloud Functions (see functions/ folder)
+    if (USE_CLOUD_FUNCTION) {
+      // Use Cloud Function for explicit caching (90% guaranteed discount)
+      const result = await callGeminiCloudFunction(
+        messages,
+        modelTier,
+        'ai_chat',
+        cachingOptions?.cacheId,
+        cachingOptions?.cacheCreatedAt,
+        undefined // No system prompt for general AI chat
+      );
 
-    const model = genAI.getGenerativeModel({ model: modelName });
+      responseText = result.text;
+      inputTokens = result.usage.promptTokens;
+      outputTokens = result.usage.completionTokens;
+      cachedTokens = result.usage.cachedTokens;
 
-    // Build conversation history (exclude last message)
-    let history = messages.slice(0, -1).map(msg => ({
-      role: msg.role === 'user' ? 'user' : 'model',
-      parts: [{ text: msg.content }],
-    }));
+      // Handle cache callbacks
+      if (result.cache) {
+        if (cachingOptions?.cacheId && cachingOptions.cacheId === result.cache.cacheId) {
+          // Cache was renewed
+          cachingOptions.onCacheUpdated?.(result.cache.cacheId, new Date(result.cache.createdAt));
+        } else {
+          // New cache created
+          cachingOptions?.onCacheCreated?.(result.cache.cacheId, new Date(result.cache.createdAt));
+        }
+      }
 
-    // Gemini requires first message to be from user
-    while (history.length > 0 && history[0].role === 'model') {
-      history = history.slice(1);
+      // Show warnings if any
+      if (result.warnings && result.warnings.length > 0) {
+        console.warn('Cloud Function warnings:', result.warnings);
+        // You can show these to user via Alert if needed
+      }
+    } else {
+      // Fallback: Direct API call (uses Google's Implicit Caching)
+      const modelName = GEMINI_MODELS[modelTier];
+      const model = genAI.getGenerativeModel({ model: modelName });
+
+      // Build conversation history (exclude last message)
+      let history = messages.slice(0, -1).map(msg => ({
+        role: msg.role === 'user' ? 'user' : 'model',
+        parts: [{ text: msg.content }],
+      }));
+
+      // Gemini requires first message to be from user
+      while (history.length > 0 && history[0].role === 'model') {
+        history = history.slice(1);
+      }
+
+      const chat = model.startChat({ history });
+      const lastMessage = messages[messages.length - 1].content;
+
+      const result = await chat.sendMessage(lastMessage);
+      const response = await result.response;
+
+      responseText = response.text();
+      inputTokens = response.usageMetadata?.promptTokenCount || 0;
+      outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
+      cachedTokens = response.usageMetadata?.cachedContentTokenCount || 0;
     }
-
-    const chat = model.startChat({ history });
-    const lastMessage = messages[messages.length - 1].content;
-
-    const result = await chat.sendMessage(lastMessage);
-    const response = await result.response;
 
     // ============================================
     // CREDIT DEDUCTION
     // ============================================
-
-    const inputTokens = response.usageMetadata?.promptTokenCount || 0;
-    const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
-
-    // Get cached token count from response metadata (implicit caching)
-    cachedTokens = response.usageMetadata?.cachedContentTokenCount || 0;
-
     await deductCreditsWithCallback(
       userId,
       isSuperAdmin,
@@ -430,12 +465,12 @@ export async function chatWithAI(
       modelTier,
       'text',
       groundingOptions,
-      undefined, // No explicit cache management
+      USE_CLOUD_FUNCTION ? cachingOptions : undefined,
       onTokenUsage,
-      cachedTokens // Pass cached token count for pricing
+      cachedTokens
     );
 
-    return response.text();
+    return responseText;
   } catch (error) {
     console.error('Gemini Chat API error:', error);
     throw new Error('Failed to get AI response. Please try again.');
@@ -469,8 +504,6 @@ export async function chatJapaneseLearning(
     if (!isSuperAdmin) {
       await checkAndResetCredits(userId, userTier);
     }
-
-    const modelName = GEMINI_MODELS[modelTier];
 
     // Convert language code to full language name
     const languageName = getLanguageName(userLanguage);
@@ -521,47 +554,81 @@ Remember: Be encouraging and patient. Respond primarily in Japanese, but explain
 CRITICAL: ALL translations in the {{kanji|hiragana|translation}} format MUST be in ${languageName} language.
 For example, if the language is Vietnamese, write {{会話|かいわ|hội thoại}}, NOT {{会話|かいわ|conversation}}.`;
 
-    // ============================================
-    // API CALL - Direct to Gemini (uses Google's Implicit Caching)
-    // ============================================
-    // NOTE: Explicit caching removed - not compatible with React Native
-    // Google's Implicit Caching provides automatic 75-90% discount
-
     let cachedTokens = 0;
-    const model = genAI.getGenerativeModel({ model: modelName });
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let responseText = '';
 
-    // Build conversation with system prompt
-    const history = [
-      {
-        role: 'user',
-        parts: [{ text: systemPrompt }],
-      },
-      {
-        role: 'model',
-        parts: [{ text: `はい、分かりました。${jlptLevel}レベルで教えます！` }],
-      },
-      ...messages.slice(0, -1).map(msg => ({
-        role: msg.role === 'user' ? 'user' : 'model',
-        parts: [{ text: msg.content }],
-      })),
-    ];
+    // ============================================
+    // API CALL - Cloud Function or Direct
+    // ============================================
+    if (USE_CLOUD_FUNCTION) {
+      // Use Cloud Function for explicit caching (90% guaranteed discount)
+      const result = await callGeminiCloudFunction(
+        messages,
+        modelTier,
+        'japanese_learning',
+        cachingOptions?.cacheId,
+        cachingOptions?.cacheCreatedAt,
+        systemPrompt
+      );
 
-    const chat = model.startChat({ history });
-    const lastMessage = messages[messages.length - 1].content;
+      responseText = result.text;
+      inputTokens = result.usage.promptTokens;
+      outputTokens = result.usage.completionTokens;
+      cachedTokens = result.usage.cachedTokens;
 
-    const result = await chat.sendMessage(lastMessage);
-    const response = await result.response;
+      // Handle cache callbacks
+      if (result.cache) {
+        if (cachingOptions?.cacheId && cachingOptions.cacheId === result.cache.cacheId) {
+          // Cache was renewed
+          cachingOptions.onCacheUpdated?.(result.cache.cacheId, new Date(result.cache.createdAt));
+        } else {
+          // New cache created
+          cachingOptions?.onCacheCreated?.(result.cache.cacheId, new Date(result.cache.createdAt));
+        }
+      }
+
+      // Show warnings if any
+      if (result.warnings && result.warnings.length > 0) {
+        console.warn('Cloud Function warnings:', result.warnings);
+      }
+    } else {
+      // Fallback: Direct API call (uses Google's Implicit Caching)
+      const modelName = GEMINI_MODELS[modelTier];
+      const model = genAI.getGenerativeModel({ model: modelName });
+
+      // Build conversation with system prompt
+      const history = [
+        {
+          role: 'user',
+          parts: [{ text: systemPrompt }],
+        },
+        {
+          role: 'model',
+          parts: [{ text: `はい、分かりました。${jlptLevel}レベルで教えます！` }],
+        },
+        ...messages.slice(0, -1).map(msg => ({
+          role: msg.role === 'user' ? 'user' : 'model',
+          parts: [{ text: msg.content }],
+        })),
+      ];
+
+      const chat = model.startChat({ history });
+      const lastMessage = messages[messages.length - 1].content;
+
+      const result = await chat.sendMessage(lastMessage);
+      const response = await result.response;
+
+      responseText = response.text();
+      inputTokens = response.usageMetadata?.promptTokenCount || 0;
+      outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
+      cachedTokens = response.usageMetadata?.cachedContentTokenCount || 0;
+    }
 
     // ============================================
     // CREDIT DEDUCTION
     // ============================================
-
-    const inputTokens = response.usageMetadata?.promptTokenCount || 0;
-    const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
-
-    // Get cached token count from response metadata (implicit caching)
-    cachedTokens = response.usageMetadata?.cachedContentTokenCount || 0;
-
     await deductCreditsWithCallback(
       userId,
       isSuperAdmin,
@@ -571,12 +638,12 @@ For example, if the language is Vietnamese, write {{会話|かいわ|hội tho�
       modelTier,
       'text',
       groundingOptions,
-      undefined, // No explicit cache management
+      USE_CLOUD_FUNCTION ? cachingOptions : undefined,
       onTokenUsage,
-      cachedTokens // Pass cached token count for pricing
+      cachedTokens
     );
 
-    return response.text();
+    return responseText;
   } catch (error) {
     console.error('Gemini Japanese Learning API error:', error);
     throw new Error('Failed to get AI response. Please try again.');

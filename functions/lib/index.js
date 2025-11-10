@@ -62,6 +62,106 @@ const getGeminiClients = () => {
     };
 };
 /**
+ * Load token limits config from Firestore
+ */
+async function loadTokenLimitsConfig() {
+    try {
+        const configDoc = await admin.firestore().collection('aiConfig').doc('tokenLimits').get();
+        if (!configDoc.exists) {
+            console.warn('Token limits config not found in Firestore, using defaults');
+            return {
+                features: {
+                    ai_chat: { maxInputTokens: 10000, description: 'AI Chat' },
+                    japanese_learning: { maxInputTokens: 10000, description: 'Japanese Learning' },
+                    garbage_analysis: { maxInputTokens: 50000, description: 'Garbage Analysis' },
+                    web_summary: { maxInputTokens: 100000, description: 'Web Summary' },
+                    web_qa: { maxInputTokens: 100000, description: 'Web Q&A' },
+                    japanese_translation: { maxInputTokens: 50000, description: 'Japanese Translation' },
+                },
+                cacheCreationWarningThreshold: 150000,
+            };
+        }
+        return configDoc.data();
+    }
+    catch (error) {
+        console.error('Error loading token limits config:', error);
+        // Return defaults on error
+        return {
+            features: {
+                ai_chat: { maxInputTokens: 10000, description: 'AI Chat' },
+                japanese_learning: { maxInputTokens: 10000, description: 'Japanese Learning' },
+            },
+            cacheCreationWarningThreshold: 150000,
+        };
+    }
+}
+/**
+ * Count tokens in messages using Gemini API
+ */
+async function countMessageTokens(genAI, modelName, messages, systemPrompt) {
+    try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        // Build content array
+        const contents = [];
+        // Add system prompt if provided
+        if (systemPrompt) {
+            contents.push({
+                role: 'user',
+                parts: [{ text: systemPrompt }],
+            });
+            contents.push({
+                role: 'model',
+                parts: [{ text: 'Understood. I will follow these instructions.' }],
+            });
+        }
+        // Add messages
+        for (const msg of messages) {
+            contents.push({
+                role: msg.role === 'user' ? 'user' : 'model',
+                parts: [{ text: msg.content }],
+            });
+        }
+        const result = await model.countTokens({ contents });
+        return result.totalTokens || 0;
+    }
+    catch (error) {
+        console.error('Error counting tokens:', error);
+        // Fallback: estimate based on characters (rough estimate: 1 token ≈ 4 chars)
+        const totalChars = messages.reduce((sum, msg) => sum + msg.content.length, 0) + ((systemPrompt === null || systemPrompt === void 0 ? void 0 : systemPrompt.length) || 0);
+        return Math.ceil(totalChars / 4);
+    }
+}
+/**
+ * Trim messages to fit within token limit (keep most recent messages)
+ */
+async function trimMessagesToLimit(genAI, modelName, messages, maxTokens, systemPrompt) {
+    // Always keep last message (current user input)
+    if (messages.length === 0)
+        return messages;
+    const lastMessage = messages[messages.length - 1];
+    let trimmedMessages = [...messages];
+    // Count tokens
+    let tokenCount = await countMessageTokens(genAI, modelName, trimmedMessages, systemPrompt);
+    // If within limit, return all messages
+    if (tokenCount <= maxTokens) {
+        return trimmedMessages;
+    }
+    console.log(`Messages exceed token limit (${tokenCount} > ${maxTokens}), trimming...`);
+    // Remove oldest messages until within limit (but keep last message)
+    while (trimmedMessages.length > 1 && tokenCount > maxTokens) {
+        // Remove oldest message (not including last one)
+        trimmedMessages = [trimmedMessages[0], ...trimmedMessages.slice(2)];
+        tokenCount = await countMessageTokens(genAI, modelName, trimmedMessages, systemPrompt);
+    }
+    // If still over limit, keep only last message
+    if (tokenCount > maxTokens) {
+        console.warn('Even single message exceeds limit, keeping only last message');
+        trimmedMessages = [lastMessage];
+    }
+    console.log(`Trimmed to ${trimmedMessages.length} messages (${tokenCount} tokens)`);
+    return trimmedMessages;
+}
+/**
  * Check if cache is still valid (not expired)
  */
 function isCacheValid(cacheCreatedAt) {
@@ -134,11 +234,19 @@ exports.geminiChat = functions.https.onRequest((request, response) => {
                 response.status(405).json({ error: 'Method not allowed' });
                 return;
             }
-            const { messages, modelTier = 'lite', cacheId, cacheCreatedAt, systemPrompt, } = request.body;
+            const { messages, modelTier = 'lite', cacheId, cacheCreatedAt, systemPrompt, featureType = 'ai_chat', // Default to ai_chat
+             } = request.body;
             if (!messages || !Array.isArray(messages)) {
                 response.status(400).json({ error: 'Invalid messages format' });
                 return;
             }
+            // Load token limits config
+            const config = await loadTokenLimitsConfig();
+            const featureConfig = config.features[featureType];
+            if (!featureConfig) {
+                console.warn(`Unknown feature type: ${featureType}, using default limits`);
+            }
+            const maxInputTokens = (featureConfig === null || featureConfig === void 0 ? void 0 : featureConfig.maxInputTokens) || 10000;
             // Initialize Gemini clients
             const { genAI, cacheManager } = getGeminiClients();
             // Model name mapping
@@ -152,7 +260,8 @@ exports.geminiChat = functions.https.onRequest((request, response) => {
             let cachedTokens = 0;
             let newCacheId;
             let newCacheCreatedAt;
-            // Step B: Check and manage existing cache
+            let warnings = [];
+            // Check and manage existing cache
             if (cacheId && cacheCreatedAt) {
                 const cacheDate = new Date(cacheCreatedAt);
                 const cacheValid = isCacheValid(cacheDate);
@@ -198,7 +307,12 @@ exports.geminiChat = functions.https.onRequest((request, response) => {
                 }
             }
             if (!useCachedContent) {
-                // No cache - use full history
+                // No cache - use full history (with token limiting)
+                // Trim messages to fit within token limit
+                const trimmedMessages = await trimMessagesToLimit(genAI, modelName, messages, maxInputTokens, systemPrompt);
+                if (trimmedMessages.length < messages.length) {
+                    warnings.push(`History was trimmed from ${messages.length} to ${trimmedMessages.length} messages to fit within ${maxInputTokens} token limit for ${featureType}`);
+                }
                 const model = genAI.getGenerativeModel({ model: modelName });
                 // Build history
                 let history = [];
@@ -216,7 +330,7 @@ exports.geminiChat = functions.https.onRequest((request, response) => {
                 // Add message history (exclude last message)
                 history = [
                     ...history,
-                    ...messages.slice(0, -1).map((msg) => ({
+                    ...trimmedMessages.slice(0, -1).map((msg) => ({
                         role: msg.role === 'user' ? 'user' : 'model',
                         parts: [{ text: msg.content }],
                     })),
@@ -226,7 +340,7 @@ exports.geminiChat = functions.https.onRequest((request, response) => {
                     history = history.slice(1);
                 }
                 const chat = model.startChat({ history });
-                const lastMessage = messages[messages.length - 1].content;
+                const lastMessage = trimmedMessages[trimmedMessages.length - 1].content;
                 result = await chat.sendMessage(lastMessage);
                 apiResponse = await result.response;
             }
@@ -245,6 +359,12 @@ exports.geminiChat = functions.https.onRequest((request, response) => {
                         ...messages,
                         { role: 'assistant', content: apiResponse.text() },
                     ];
+                    // Count tokens for cache creation
+                    const cacheTokenCount = await countMessageTokens(genAI, modelName, fullConversation);
+                    // Check if cache creation is too large (warning only, not blocking)
+                    if (cacheTokenCount > config.cacheCreationWarningThreshold) {
+                        warnings.push(`⚠️ Large cache creation: ${cacheTokenCount.toLocaleString()} tokens (threshold: ${config.cacheCreationWarningThreshold.toLocaleString()}). This may consume significant credits.`);
+                    }
                     const cacheMetadata = await createCachedContent(cacheManager, modelName, fullConversation);
                     newCacheId = cacheMetadata.cacheId;
                     newCacheCreatedAt = cacheMetadata.createdAt;
@@ -253,7 +373,7 @@ exports.geminiChat = functions.https.onRequest((request, response) => {
                 }
                 catch (error) {
                     console.error('Failed to create cache:', error);
-                    // Continue without caching
+                    warnings.push('Failed to create cache for future requests. Caching disabled for this conversation.');
                 }
             }
             // Return response
@@ -273,6 +393,7 @@ exports.geminiChat = functions.https.onRequest((request, response) => {
                     cacheId: cacheId,
                     createdAt: newCacheCreatedAt.toISOString(),
                 } : undefined),
+                warnings: warnings.length > 0 ? warnings : undefined,
             });
         }
         catch (error) {
