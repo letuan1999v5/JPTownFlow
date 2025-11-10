@@ -23,8 +23,18 @@ import {
   CREDIT_ALLOCATIONS,
   getTotalCredits,
   tokensToCredits,
+  calculateCredits,
+  CreditCalculationOptions,
   AIModelTier,
 } from '../types/credits';
+
+// Minimum credit balance allowed (negative) by tier
+export const MINIMUM_CREDIT_BALANCE: Record<string, number> = {
+  FREE: 0,        // Free tier cannot go negative
+  PRO: -100,      // Pro can go up to -100
+  ULTRA: -200,    // Ultra can go up to -200
+  SUPERADMIN: -Infinity, // Super admin has no limit
+};
 
 const CREDITS_COLLECTION = 'credits';
 const TRANSACTIONS_COLLECTION = 'creditTransactions';
@@ -247,15 +257,20 @@ export async function checkAndResetCredits(
 /**
  * Deduct credits from user balance
  * Credits are deducted in this order: monthly → carryover → extra
+ * Allows negative balance based on subscription tier
  */
 export async function deductCredits(
   userId: string,
   inputTokens: number,
   outputTokens: number,
   feature: string,
-  modelTier: AIModelTier
+  modelTier: AIModelTier,
+  options?: Partial<Omit<CreditCalculationOptions, 'inputTokens' | 'outputTokens' | 'modelTier'>>
 ): Promise<{ success: boolean; remainingCredits: number; creditsDeducted: number; message?: string }> {
-  const creditsNeeded = tokensToCredits(inputTokens, outputTokens, modelTier);
+  // Calculate credits using new function with options
+  const creditsNeeded = options
+    ? calculateCredits({ inputTokens, outputTokens, modelTier, ...options })
+    : tokensToCredits(inputTokens, outputTokens, modelTier);
 
   return await runTransaction(db, async (transaction) => {
     const docRef = doc(db, CREDITS_COLLECTION, userId);
@@ -265,12 +280,14 @@ export async function deductCredits(
       return {
         success: false,
         remainingCredits: 0,
+        creditsDeducted: 0,
         message: 'Credit balance not found',
       };
     }
 
     const currentBalance = docSnap.data() as any;
     const now = new Date();
+    const userTier = currentBalance.tier || 'FREE';
 
     // Check if carryover credits have expired
     if (
@@ -286,39 +303,53 @@ export async function deductCredits(
       (currentBalance.carryoverCredits || 0) +
       (currentBalance.extraCredits || 0);
 
-    if (totalAvailable < creditsNeeded) {
+    // Get minimum allowed balance for this tier
+    const minBalance = MINIMUM_CREDIT_BALANCE[userTier] ?? 0;
+
+    // Calculate what the balance would be after deduction
+    const balanceAfterDeduction = totalAvailable - creditsNeeded;
+
+    // Check if deduction would exceed minimum allowed balance
+    if (balanceAfterDeduction < minBalance) {
       return {
         success: false,
         remainingCredits: totalAvailable,
-        message: 'Insufficient credits',
+        creditsDeducted: 0,
+        message: `Insufficient credits. You need ${creditsNeeded} credits but only have ${totalAvailable} available (minimum allowed: ${minBalance})`,
       };
     }
 
-    // Deduct credits in order: monthly → carryover → extra
+    // Deduct credits in order: monthly → carryover → extra (allowing negative for monthly)
     let remaining = creditsNeeded;
     let newMonthly = currentBalance.monthlyCredits || 0;
     let newCarryover = currentBalance.carryoverCredits || 0;
     let newExtra = currentBalance.extraCredits || 0;
 
-    // 1. Deduct from monthly first
-    if (remaining > 0 && newMonthly > 0) {
+    // 1. Deduct from monthly first (can go negative)
+    if (remaining > 0) {
       const deduction = Math.min(remaining, newMonthly);
       newMonthly -= deduction;
       remaining -= deduction;
     }
 
-    // 2. Then from carryover
+    // 2. Then from carryover (cannot go negative)
     if (remaining > 0 && newCarryover > 0) {
       const deduction = Math.min(remaining, newCarryover);
       newCarryover -= deduction;
       remaining -= deduction;
     }
 
-    // 3. Finally from extra
+    // 3. Then from extra (cannot go negative)
     if (remaining > 0 && newExtra > 0) {
       const deduction = Math.min(remaining, newExtra);
       newExtra -= deduction;
       remaining -= deduction;
+    }
+
+    // 4. If still remaining, deduct from monthly (allowing it to go negative)
+    if (remaining > 0) {
+      newMonthly -= remaining;
+      remaining = 0;
     }
 
     // Update balance
