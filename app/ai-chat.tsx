@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Send, Star, List, Settings } from 'lucide-react-native';
-import { chatWithAI, ChatMessage, TokenUsage } from '../services/geminiService';
+import { chatWithAI, ChatMessage, TokenUsage, CachingOptions } from '../services/geminiService';
 import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import { CreditDisplay, CreditInfoModal, ModelSelector } from '../components/credits';
@@ -56,6 +56,10 @@ export default function AIChatScreen() {
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
   const [chatHistoryLoaded, setChatHistoryLoaded] = useState(false);
+
+  // Cache management state
+  const [cacheId, setCacheId] = useState<string | null>(null);
+  const [cacheCreatedAt, setCacheCreatedAt] = useState<Date | null>(null);
 
   const translationLanguages: { code: TranslationLanguage; name: string; flag: string }[] = [
     { code: 'en', name: 'English', flag: '🇬🇧' },
@@ -124,6 +128,14 @@ export default function AIChatScreen() {
           setTranslationLanguage(chatData.translationLanguage);
         }
         setIsImportant(chatData.isImportant || false);
+
+        // Load cache information
+        if (chatData.cacheId) {
+          setCacheId(chatData.cacheId);
+          if (chatData.cacheCreatedAt) {
+            setCacheCreatedAt(chatData.cacheCreatedAt.toDate());
+          }
+        }
       }
     } catch (error) {
       console.error('Error loading chat history:', error);
@@ -169,6 +181,9 @@ export default function AIChatScreen() {
         messages: updatedMessages,
         translationLanguage: translationLanguage,
         isImportant: isImportant,
+        // Cache information
+        cacheId: cacheId || existingData?.cacheId || null,
+        cacheCreatedAt: cacheCreatedAt ? Timestamp.fromDate(cacheCreatedAt) : (existingData?.cacheCreatedAt || null),
         createdAt: existingData?.createdAt || now,
         lastUpdatedAt: now,
       });
@@ -253,11 +268,33 @@ export default function AIChatScreen() {
 
       // Token usage callback for super admin
       const onTokenUsage = isSuperAdmin ? (usage: TokenUsage) => {
-        Alert.alert(
-          '🔧 Token Usage (Super Admin)',
-          `Prompt: ${usage.promptTokens}\nCompletion: ${usage.completionTokens}\nTotal: ${usage.totalTokens}`,
-          [{ text: 'OK' }]
-        );
+        if (usage.breakdown) {
+          // Show detailed breakdown
+          const breakdown = usage.breakdown;
+          const message = `📊 MODEL: ${breakdown.modelTier.toUpperCase()} (${breakdown.promptSizeTier} prompt)\n\n` +
+            `💰 COST BREAKDOWN:\n` +
+            `• Input: ${breakdown.inputTokens.toLocaleString()} tokens × $${breakdown.inputPricePerMillion}/1M = $${breakdown.inputCostUSD.toFixed(6)}\n` +
+            `• Output: ${breakdown.outputTokens.toLocaleString()} tokens × $${breakdown.outputPricePerMillion}/1M = $${breakdown.outputCostUSD.toFixed(6)}\n` +
+            (breakdown.cachingCostUSD > 0 ? `• Cache: ${breakdown.cachedTokens.toLocaleString()} tokens × $${breakdown.cachingPricePerMillion}/1M = $${breakdown.cachingCostUSD.toFixed(6)}\n` : '') +
+            (breakdown.groundingDetails?.googleSearch ? `• Google Search: $${breakdown.groundingCostUSD.toFixed(6)}\n` : '') +
+            (breakdown.groundingDetails?.googleMaps ? `• Google Maps: $${breakdown.groundingCostUSD.toFixed(6)}\n` : '') +
+            `\n📈 TOTAL: $${breakdown.totalCostUSD.toFixed(6)}\n` +
+            `× ${breakdown.profitMargin}x margin = ${breakdown.finalCredits} credits\n\n` +
+            `💳 Credits deducted: ${breakdown.finalCredits}`;
+
+          Alert.alert(
+            '🔧 Credit Calculation (Super Admin)',
+            message,
+            [{ text: 'OK' }]
+          );
+        } else {
+          // Fallback to simple display
+          Alert.alert(
+            '🔧 Token Usage (Super Admin)',
+            `Prompt: ${usage.promptTokens}\nCompletion: ${usage.completionTokens}\nTotal: ${usage.totalTokens}`,
+            [{ text: 'OK' }]
+          );
+        }
       } : undefined;
 
       const response = await chatWithAI(
@@ -266,7 +303,24 @@ export default function AIChatScreen() {
         [...messages, userMessage],
         translationLanguage,
         selectedModel,
-        onTokenUsage
+        onTokenUsage,
+        undefined, // groundingOptions
+        {
+          // Pass cache options
+          cacheId: cacheId || undefined,
+          cacheCreatedAt: cacheCreatedAt || undefined,
+          onCacheCreated: (newCacheId: string, createdAt: Date) => {
+            // Save new cache ID
+            setCacheId(newCacheId);
+            setCacheCreatedAt(createdAt);
+            console.log('New cache created:', newCacheId);
+          },
+          onCacheUpdated: (updatedCacheId: string, updatedAt: Date) => {
+            // Update cache timestamp
+            setCacheCreatedAt(updatedAt);
+            console.log('Cache TTL renewed:', updatedCacheId);
+          },
+        }
       );
 
       const assistantMessage: ChatMessage = {

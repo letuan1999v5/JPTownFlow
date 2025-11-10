@@ -24,7 +24,9 @@ import {
   getTotalCredits,
   tokensToCredits,
   calculateCredits,
+  calculateCreditsWithBreakdown,
   CreditCalculationOptions,
+  CreditBreakdown,
   AIModelTier,
 } from '../types/credits';
 
@@ -265,12 +267,33 @@ export async function deductCredits(
   outputTokens: number,
   feature: string,
   modelTier: AIModelTier,
-  options?: Partial<Omit<CreditCalculationOptions, 'inputTokens' | 'outputTokens' | 'modelTier'>>
-): Promise<{ success: boolean; remainingCredits: number; creditsDeducted: number; message?: string }> {
+  options?: Partial<Omit<CreditCalculationOptions, 'inputTokens' | 'outputTokens' | 'modelTier'>>,
+  returnBreakdown?: boolean
+): Promise<{
+  success: boolean;
+  remainingCredits: number;
+  creditsDeducted: number;
+  message?: string;
+  breakdown?: CreditBreakdown;
+}> {
   // Calculate credits using new function with options
-  const creditsNeeded = options
-    ? calculateCredits({ inputTokens, outputTokens, modelTier, ...options })
-    : tokensToCredits(inputTokens, outputTokens, modelTier);
+  let creditsNeeded: number;
+  let breakdown: CreditBreakdown | undefined;
+
+  if (returnBreakdown) {
+    const calcOptions: CreditCalculationOptions = {
+      inputTokens,
+      outputTokens,
+      modelTier,
+      ...(options || {})
+    };
+    breakdown = calculateCreditsWithBreakdown(calcOptions);
+    creditsNeeded = breakdown.finalCredits;
+  } else {
+    creditsNeeded = options
+      ? calculateCredits({ inputTokens, outputTokens, modelTier, ...options })
+      : tokensToCredits(inputTokens, outputTokens, modelTier);
+  }
 
   return await runTransaction(db, async (transaction) => {
     const docRef = doc(db, CREDITS_COLLECTION, userId);
@@ -381,6 +404,7 @@ export async function deductCredits(
       success: true,
       remainingCredits: newMonthly + newCarryover + newExtra,
       creditsDeducted: creditsNeeded,
+      breakdown: returnBreakdown ? breakdown : undefined,
     };
   });
 }

@@ -114,6 +114,44 @@ export const GROUNDING_PRICING = {
 // Prompt size threshold for pricing tiers
 export const PROMPT_SIZE_THRESHOLD = 200000; // 200k tokens
 
+// Detailed credit breakdown for transparency
+export interface CreditBreakdown {
+  // Token counts
+  inputTokens: number;
+  outputTokens: number;
+  cachedTokens: number;
+  totalTokens: number;
+
+  // Pricing details
+  modelTier: AIModelTier;
+  inputType: InputType;
+  promptSizeTier: 'small' | 'large'; // <=200k or >200k
+
+  // Cost breakdown (in USD)
+  inputCostUSD: number;
+  outputCostUSD: number;
+  cachingCostUSD: number;
+  groundingCostUSD: number;
+  totalCostUSD: number;
+
+  // Pricing applied
+  inputPricePerMillion: number;
+  outputPricePerMillion: number;
+  cachingPricePerMillion?: number;
+  groundingDetails?: {
+    googleSearch?: boolean;
+    googleMaps?: boolean;
+  };
+
+  // Credit calculation
+  baseCredits: number; // Before profit margin
+  profitMargin: number;
+  finalCredits: number; // After profit margin (rounded up)
+
+  // Formula for display
+  formula: string;
+}
+
 // Credit balance types
 export interface CreditBalance {
   userId: string;
@@ -260,8 +298,8 @@ export function tokensToCredits(
   });
 }
 
-// New comprehensive credit calculation function
-export function calculateCredits(options: CreditCalculationOptions): number {
+// New comprehensive credit calculation function with detailed breakdown
+export function calculateCreditsWithBreakdown(options: CreditCalculationOptions): CreditBreakdown {
   const {
     inputTokens,
     outputTokens,
@@ -274,45 +312,51 @@ export function calculateCredits(options: CreditCalculationOptions): number {
   } = options;
 
   const pricing = GEMINI_PRICING[modelTier];
-  let totalCostUSD = 0;
 
   // Determine prompt size tier (based on total input tokens including cached)
   const totalPromptTokens = inputTokens + cachedTokens;
   const isLargePrompt = totalPromptTokens > PROMPT_SIZE_THRESHOLD;
+  const promptSizeTier: 'small' | 'large' = isLargePrompt ? 'large' : 'small';
 
   // 1. Calculate input token cost
   let inputCostUSD = 0;
+  let inputPricePerMillion = 0;
   if (inputType === 'audio' && pricing.audio) {
     // Audio input uses special pricing
-    inputCostUSD = (inputTokens * pricing.audio.input) / 1_000_000;
+    inputPricePerMillion = pricing.audio.input;
+    inputCostUSD = (inputTokens * inputPricePerMillion) / 1_000_000;
   } else {
     // Text/image/video input
-    const inputPrice = isLargePrompt ? pricing.input.large : pricing.input.small;
-    inputCostUSD = (inputTokens * inputPrice) / 1_000_000;
+    inputPricePerMillion = isLargePrompt ? pricing.input.large : pricing.input.small;
+    inputCostUSD = (inputTokens * inputPricePerMillion) / 1_000_000;
   }
 
   // 2. Calculate output token cost
-  const outputPrice = isLargePrompt ? pricing.output.large : pricing.output.small;
-  const outputCostUSD = (outputTokens * outputPrice) / 1_000_000;
+  const outputPricePerMillion = isLargePrompt ? pricing.output.large : pricing.output.small;
+  const outputCostUSD = (outputTokens * outputPricePerMillion) / 1_000_000;
 
   // 3. Calculate context caching cost (if used)
   let cachingCostUSD = 0;
+  let cachingPricePerMillion: number | undefined;
   if (useCaching && cachedTokens > 0) {
-    const cachingPrice = isLargePrompt ? pricing.contextCaching.large : pricing.contextCaching.small;
-    cachingCostUSD = (cachedTokens * cachingPrice) / 1_000_000;
+    cachingPricePerMillion = isLargePrompt ? pricing.contextCaching.large : pricing.contextCaching.small;
+    cachingCostUSD = (cachedTokens * cachingPricePerMillion) / 1_000_000;
   }
 
   // 4. Add grounding costs (if used)
   let groundingCostUSD = 0;
+  const groundingDetails: { googleSearch?: boolean; googleMaps?: boolean } = {};
   if (useGroundingSearch) {
     groundingCostUSD += GROUNDING_PRICING.googleSearch.pricePerRequest;
+    groundingDetails.googleSearch = true;
   }
   if (useGroundingMaps) {
     groundingCostUSD += GROUNDING_PRICING.googleMaps.pricePerRequest;
+    groundingDetails.googleMaps = true;
   }
 
   // Total cost
-  totalCostUSD = inputCostUSD + outputCostUSD + cachingCostUSD + groundingCostUSD;
+  const totalCostUSD = inputCostUSD + outputCostUSD + cachingCostUSD + groundingCostUSD;
 
   // Convert to credits
   const baseCredits = totalCostUSD / CREDIT_CONVERSION_RATE;
@@ -321,7 +365,60 @@ export function calculateCredits(options: CreditCalculationOptions): number {
   const creditsWithMargin = baseCredits * PROFIT_MARGIN;
 
   // Round up to nearest integer
-  return Math.ceil(creditsWithMargin);
+  const finalCredits = Math.ceil(creditsWithMargin);
+
+  // Build formula string for display
+  let formulaParts: string[] = [];
+
+  if (inputTokens > 0) {
+    formulaParts.push(`Input: ${inputTokens.toLocaleString()} × $${inputPricePerMillion}/1M = $${inputCostUSD.toFixed(6)}`);
+  }
+
+  if (outputTokens > 0) {
+    formulaParts.push(`Output: ${outputTokens.toLocaleString()} × $${outputPricePerMillion}/1M = $${outputCostUSD.toFixed(6)}`);
+  }
+
+  if (cachingCostUSD > 0 && cachingPricePerMillion) {
+    formulaParts.push(`Cache: ${cachedTokens.toLocaleString()} × $${cachingPricePerMillion}/1M = $${cachingCostUSD.toFixed(6)}`);
+  }
+
+  if (groundingDetails.googleSearch) {
+    formulaParts.push(`Google Search: $${GROUNDING_PRICING.googleSearch.pricePerRequest}`);
+  }
+
+  if (groundingDetails.googleMaps) {
+    formulaParts.push(`Google Maps: $${GROUNDING_PRICING.googleMaps.pricePerRequest}`);
+  }
+
+  const formula = `${formulaParts.join(' + ')}\nTotal: $${totalCostUSD.toFixed(6)} × ${PROFIT_MARGIN}x margin = ${finalCredits} credits`;
+
+  return {
+    inputTokens,
+    outputTokens,
+    cachedTokens,
+    totalTokens: inputTokens + outputTokens,
+    modelTier,
+    inputType,
+    promptSizeTier,
+    inputCostUSD,
+    outputCostUSD,
+    cachingCostUSD,
+    groundingCostUSD,
+    totalCostUSD,
+    inputPricePerMillion,
+    outputPricePerMillion,
+    cachingPricePerMillion,
+    groundingDetails: Object.keys(groundingDetails).length > 0 ? groundingDetails : undefined,
+    baseCredits,
+    profitMargin: PROFIT_MARGIN,
+    finalCredits,
+    formula,
+  };
+}
+
+// Simpler version that just returns the credit number (for backward compatibility)
+export function calculateCredits(options: CreditCalculationOptions): number {
+  return calculateCreditsWithBreakdown(options).finalCredits;
 }
 
 // Legacy function for backward compatibility (uses total tokens)

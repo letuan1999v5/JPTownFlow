@@ -1,7 +1,7 @@
 // services/geminiService.ts
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { AIModelTier, GEMINI_MODELS, canUseModel, InputType } from '../types/credits';
+import { AIModelTier, GEMINI_MODELS, canUseModel, InputType, CreditBreakdown } from '../types/credits';
 import { deductCredits, checkAndResetCredits } from './creditsService';
 
 // Grounding options
@@ -13,21 +13,35 @@ export interface GroundingOptions {
 // Context caching options
 export interface CachingOptions {
   cacheId?: string; // Existing cache ID to use
-  onCacheCreated?: (cacheId: string) => void; // Callback when new cache is created
+  cacheCreatedAt?: Date; // When the cache was created (for 55-min logic)
+  onCacheCreated?: (cacheId: string, createdAt: Date) => void; // Callback when new cache is created
+  onCacheUpdated?: (cacheId: string, updatedAt: Date) => void; // Callback when cache TTL is renewed
 }
+
+// Cache metadata
+export interface CacheMetadata {
+  cacheId: string;
+  createdAt: Date;
+  cachedTokenCount: number;
+}
+
+// Cache management constants
+const CACHE_TTL_MINUTES = 60; // Google's cache TTL
+const CACHE_RENEWAL_THRESHOLD_MINUTES = 55; // Renew if older than this
 
 // Initialize Gemini AI
 const API_KEY = process.env.EXPO_PUBLIC_GOOGLE_AI_API_KEY || '';
 const genAI = new GoogleGenerativeAI(API_KEY);
 
-// Token usage metadata interface
+// Token usage metadata interface with optional detailed breakdown
 export interface TokenUsage {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  breakdown?: CreditBreakdown; // Optional detailed credit breakdown (for super admin)
 }
 
-// Optional callback for token usage tracking (for super admin)
+// Callback for usage tracking
 export type TokenUsageCallback = (usage: TokenUsage) => void;
 
 // Credit check result
@@ -35,6 +49,158 @@ export interface CreditCheckResult {
   canProceed: boolean;
   message?: string;
   remainingCredits?: number;
+}
+
+// Helper function to handle credit deduction with optional breakdown
+async function deductCreditsWithCallback(
+  userId: string,
+  isSuperAdmin: boolean,
+  inputTokens: number,
+  outputTokens: number,
+  feature: string,
+  modelTier: AIModelTier,
+  inputType: InputType,
+  groundingOptions?: GroundingOptions,
+  cachingOptions?: CachingOptions,
+  onTokenUsage?: TokenUsageCallback,
+  cachedTokens?: number
+): Promise<void> {
+  if (!isSuperAdmin) {
+    const deductResult = await deductCredits(
+      userId,
+      inputTokens,
+      outputTokens,
+      feature,
+      modelTier,
+      {
+        inputType,
+        useGroundingSearch: groundingOptions?.useGoogleSearch,
+        useGroundingMaps: groundingOptions?.useGoogleMaps,
+        useCaching: !!cachingOptions?.cacheId,
+        cachedTokens: cachedTokens || 0,
+      },
+      !!onTokenUsage // Request breakdown if callback is provided
+    );
+
+    if (!deductResult.success) {
+      throw new Error(deductResult.message || 'Failed to deduct credits');
+    }
+
+    // Track credit breakdown if callback provided
+    if (onTokenUsage && deductResult.breakdown) {
+      const usage: TokenUsage = {
+        promptTokens: inputTokens,
+        completionTokens: outputTokens,
+        totalTokens: inputTokens + outputTokens,
+        breakdown: deductResult.breakdown,
+      };
+      onTokenUsage(usage);
+    }
+  } else {
+    // For super admin, still call callback with token usage (no breakdown needed)
+    if (onTokenUsage) {
+      const usage: TokenUsage = {
+        promptTokens: inputTokens,
+        completionTokens: outputTokens,
+        totalTokens: inputTokens + outputTokens,
+      };
+      onTokenUsage(usage);
+    }
+  }
+}
+
+/**
+ * Create a new cached content for conversation history
+ * @returns Cache ID and metadata
+ */
+async function createCachedContent(
+  modelName: string,
+  conversationHistory: ChatMessage[]
+): Promise<CacheMetadata> {
+  try {
+    // Build contents array for caching
+    const contents = conversationHistory.map(msg => ({
+      role: msg.role === 'user' ? 'user' : 'model',
+      parts: [{ text: msg.content }],
+    }));
+
+    // Create cache using Google's caching API
+    // Note: This requires @google/generative-ai SDK with cache support
+    const cacheResult = await genAI.cacheManager.create({
+      model: modelName,
+      contents: contents,
+      ttl: CACHE_TTL_MINUTES * 60, // Convert to seconds
+    });
+
+    return {
+      cacheId: cacheResult.name, // e.g., "cachedContents/xyz-123"
+      createdAt: new Date(),
+      cachedTokenCount: cacheResult.usageMetadata?.totalTokenCount || 0,
+    };
+  } catch (error) {
+    console.error('Failed to create cache:', error);
+    throw new Error('Failed to create conversation cache');
+  }
+}
+
+/**
+ * Update cache TTL to extend its lifetime
+ * @returns Updated timestamp
+ */
+async function renewCacheTTL(cacheId: string): Promise<Date> {
+  try {
+    // Update cache TTL using Google's caching API
+    await genAI.cacheManager.update(cacheId, {
+      ttl: CACHE_TTL_MINUTES * 60, // Reset to 60 minutes
+    });
+
+    return new Date();
+  } catch (error) {
+    console.error('Failed to renew cache TTL:', error);
+    // Don't throw - fall back to creating new cache
+    throw error;
+  }
+}
+
+/**
+ * Check if cache needs renewal (55-minute logic)
+ * @returns true if cache was renewed, false if no action needed
+ */
+async function checkAndRenewCacheIfNeeded(
+  cacheId: string,
+  cacheCreatedAt: Date,
+  onCacheUpdated?: (cacheId: string, updatedAt: Date) => void
+): Promise<boolean> {
+  const now = new Date();
+  const elapsedMinutes = (now.getTime() - cacheCreatedAt.getTime()) / (1000 * 60);
+
+  // Logic 55 phút: Renew if between 55 and 60 minutes
+  if (elapsedMinutes >= CACHE_RENEWAL_THRESHOLD_MINUTES && elapsedMinutes < CACHE_TTL_MINUTES) {
+    try {
+      const updatedAt = await renewCacheTTL(cacheId);
+      console.log(`Cache renewed: ${cacheId} (elapsed: ${elapsedMinutes.toFixed(1)} min)`);
+
+      if (onCacheUpdated) {
+        onCacheUpdated(cacheId, updatedAt);
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Cache renewal failed, will create new cache:', error);
+      return false;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Check if cache is still valid (not expired)
+ */
+function isCacheValid(cacheCreatedAt: Date): boolean {
+  const now = new Date();
+  const elapsedMinutes = (now.getTime() - cacheCreatedAt.getTime()) / (1000 * 60);
+  return elapsedMinutes < CACHE_TTL_MINUTES;
 }
 
 // Map language codes to full language names for better AI understanding
@@ -183,39 +349,22 @@ Respond in JSON format:
     const response = await result.response;
     const text = response.text();
 
-    // Get token usage
-    const tokenUsage: TokenUsage = {
-      promptTokens: response.usageMetadata?.promptTokenCount || 0,
-      completionTokens: response.usageMetadata?.candidatesTokenCount || 0,
-      totalTokens: response.usageMetadata?.totalTokenCount || 0,
-    };
+    // Deduct credits and track usage
+    const inputTokens = response.usageMetadata?.promptTokenCount || 0;
+    const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
 
-    // Deduct credits (unless super admin)
-    if (!isSuperAdmin) {
-      const deductResult = await deductCredits(
-        userId,
-        tokenUsage.promptTokens,
-        tokenUsage.completionTokens,
-        'garbage_analysis',
-        modelTier,
-        {
-          inputType: 'image',
-          useGroundingSearch: groundingOptions?.useGoogleSearch,
-          useGroundingMaps: groundingOptions?.useGoogleMaps,
-          useCaching: !!cachingOptions?.cacheId,
-          cachedTokens: 0, // TODO: Get actual cached tokens from cache metadata
-        }
-      );
-
-      if (!deductResult.success) {
-        throw new Error(deductResult.message || 'Failed to deduct credits');
-      }
-    }
-
-    // Track token usage if callback provided
-    if (onTokenUsage) {
-      onTokenUsage(tokenUsage);
-    }
+    await deductCreditsWithCallback(
+      userId,
+      isSuperAdmin,
+      inputTokens,
+      outputTokens,
+      'garbage_analysis',
+      modelTier,
+      'image',
+      groundingOptions,
+      cachingOptions,
+      onTokenUsage
+    );
 
     // Parse JSON response
     // Remove markdown code blocks if present
@@ -287,59 +436,141 @@ export async function chatWithAI(
     }
 
     const modelName = GEMINI_MODELS[modelTier];
-    const model = genAI.getGenerativeModel({ model: modelName });
+    let useCachedContent = false;
+    let cachedTokens = 0;
 
-    // Build conversation history (exclude last message)
-    let history = messages.slice(0, -1).map(msg => ({
-      role: msg.role === 'user' ? 'user' : 'model',
-      parts: [{ text: msg.content }],
-    }));
+    // ============================================
+    // CACHE MANAGEMENT LOGIC
+    // ============================================
 
-    // Gemini requires first message to be from user
-    // Remove any leading assistant/model messages
-    while (history.length > 0 && history[0].role === 'model') {
-      history = history.slice(1);
-    }
+    // Step B: Check and manage existing cache
+    if (cachingOptions?.cacheId && cachingOptions?.cacheCreatedAt) {
+      const cacheValid = isCacheValid(cachingOptions.cacheCreatedAt);
 
-    const chat = model.startChat({ history });
-    const lastMessage = messages[messages.length - 1].content;
-
-    const result = await chat.sendMessage(lastMessage);
-    const response = await result.response;
-
-    // Get token usage
-    const tokenUsage: TokenUsage = {
-      promptTokens: response.usageMetadata?.promptTokenCount || 0,
-      completionTokens: response.usageMetadata?.candidatesTokenCount || 0,
-      totalTokens: response.usageMetadata?.totalTokenCount || 0,
-    };
-
-    // Deduct credits (unless super admin)
-    if (!isSuperAdmin) {
-      const deductResult = await deductCredits(
-        userId,
-        tokenUsage.promptTokens,
-        tokenUsage.completionTokens,
-        'ai_chat',
-        modelTier,
-        {
-          inputType: 'text',
-          useGroundingSearch: groundingOptions?.useGoogleSearch,
-          useGroundingMaps: groundingOptions?.useGoogleMaps,
-          useCaching: !!cachingOptions?.cacheId,
-          cachedTokens: 0, // TODO: Get actual cached tokens from cache metadata
+      if (cacheValid) {
+        // Cache is still valid - check if renewal is needed (55-minute logic)
+        try {
+          await checkAndRenewCacheIfNeeded(
+            cachingOptions.cacheId,
+            cachingOptions.cacheCreatedAt,
+            cachingOptions.onCacheUpdated
+          );
+        } catch (error) {
+          console.warn('Cache renewal failed, continuing with existing cache:', error);
         }
-      );
 
-      if (!deductResult.success) {
-        throw new Error(deductResult.message || 'Failed to deduct credits');
+        useCachedContent = true;
+        console.log(`Using existing cache: ${cachingOptions.cacheId}`);
+      } else {
+        console.log('Cache expired, will create new cache after response');
       }
     }
 
-    // Track token usage if callback provided
-    if (onTokenUsage) {
-      onTokenUsage(tokenUsage);
+    // ============================================
+    // API CALL (with or without cache)
+    // ============================================
+
+    let response;
+    let result;
+
+    if (useCachedContent && cachingOptions?.cacheId) {
+      // Use cached content (Step B.3)
+      try {
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          cachedContent: cachingOptions.cacheId,
+        });
+
+        const lastMessage = messages[messages.length - 1].content;
+        result = await model.generateContent(lastMessage);
+        response = await result.response;
+
+        // Get cached token count from metadata if available
+        cachedTokens = response.usageMetadata?.cachedContentTokenCount || 0;
+      } catch (error: any) {
+        // If cache not found (404), fall back to non-cached call
+        if (error?.message?.includes('404') || error?.message?.includes('not found')) {
+          console.warn('Cache not found, falling back to full history');
+          useCachedContent = false;
+          cachedTokens = 0;
+        } else {
+          throw error;
+        }
+      }
     }
+
+    if (!useCachedContent) {
+      // No cache or cache failed - use full conversation history (Step C)
+      const model = genAI.getGenerativeModel({ model: modelName });
+
+      // Build conversation history (exclude last message)
+      let history = messages.slice(0, -1).map(msg => ({
+        role: msg.role === 'user' ? 'user' : 'model',
+        parts: [{ text: msg.content }],
+      }));
+
+      // Gemini requires first message to be from user
+      while (history.length > 0 && history[0].role === 'model') {
+        history = history.slice(1);
+      }
+
+      const chat = model.startChat({ history });
+      const lastMessage = messages[messages.length - 1].content;
+
+      result = await chat.sendMessage(lastMessage);
+      response = await result.response;
+    }
+
+    // ============================================
+    // CACHE CREATION/UPDATE (Step A or B.4)
+    // ============================================
+
+    // After getting response, create new cache with full conversation
+    if (messages.length >= 2) { // Only cache if there's actual history
+      try {
+        const fullConversation = [...messages, {
+          role: 'assistant' as const,
+          content: response.text(),
+        }];
+
+        const cacheMetadata = await createCachedContent(modelName, fullConversation);
+
+        // Notify UI to save new cache ID
+        if (cachingOptions?.onCacheCreated) {
+          cachingOptions.onCacheCreated(cacheMetadata.cacheId, cacheMetadata.createdAt);
+        }
+
+        cachedTokens = cacheMetadata.cachedTokenCount;
+        console.log(`Cache created: ${cacheMetadata.cacheId} (${cachedTokens} tokens)`);
+      } catch (error) {
+        console.error('Failed to create cache, continuing without caching:', error);
+        // Don't throw - caching is optional optimization
+      }
+    }
+
+    // ============================================
+    // CREDIT DEDUCTION
+    // ============================================
+
+    const inputTokens = response.usageMetadata?.promptTokenCount || 0;
+    const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
+
+    await deductCreditsWithCallback(
+      userId,
+      isSuperAdmin,
+      inputTokens,
+      outputTokens,
+      'ai_chat',
+      modelTier,
+      'text',
+      groundingOptions,
+      {
+        ...cachingOptions,
+        cacheId: useCachedContent ? cachingOptions?.cacheId : undefined,
+      },
+      onTokenUsage,
+      cachedTokens // Pass cached token count for pricing
+    );
 
     return response.text();
   } catch (error) {
@@ -450,39 +681,22 @@ For example, if the language is Vietnamese, write {{会話|かいわ|hội tho�
     const result = await chat.sendMessage(lastMessage);
     const response = await result.response;
 
-    // Get token usage
-    const tokenUsage: TokenUsage = {
-      promptTokens: response.usageMetadata?.promptTokenCount || 0,
-      completionTokens: response.usageMetadata?.candidatesTokenCount || 0,
-      totalTokens: response.usageMetadata?.totalTokenCount || 0,
-    };
+    // Deduct credits and track usage
+    const inputTokens = response.usageMetadata?.promptTokenCount || 0;
+    const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
 
-    // Deduct credits (unless super admin)
-    if (!isSuperAdmin) {
-      const deductResult = await deductCredits(
-        userId,
-        tokenUsage.promptTokens,
-        tokenUsage.completionTokens,
-        'japanese_learning',
-        modelTier,
-        {
-          inputType: 'text',
-          useGroundingSearch: groundingOptions?.useGoogleSearch,
-          useGroundingMaps: groundingOptions?.useGoogleMaps,
-          useCaching: !!cachingOptions?.cacheId,
-          cachedTokens: 0, // TODO: Get actual cached tokens from cache metadata
-        }
-      );
-
-      if (!deductResult.success) {
-        throw new Error(deductResult.message || 'Failed to deduct credits');
-      }
-    }
-
-    // Track token usage if callback provided
-    if (onTokenUsage) {
-      onTokenUsage(tokenUsage);
-    }
+    await deductCreditsWithCallback(
+      userId,
+      isSuperAdmin,
+      inputTokens,
+      outputTokens,
+      'japanese_learning',
+      modelTier,
+      'text',
+      groundingOptions,
+      cachingOptions,
+      onTokenUsage
+    );
 
     return response.text();
   } catch (error) {
@@ -545,39 +759,22 @@ ${htmlContent.substring(0, 10000)}...`; // Limit content to avoid token limits
     const result = await model.generateContent(prompt);
     const response = await result.response;
 
-    // Get token usage
-    const tokenUsage: TokenUsage = {
-      promptTokens: response.usageMetadata?.promptTokenCount || 0,
-      completionTokens: response.usageMetadata?.candidatesTokenCount || 0,
-      totalTokens: response.usageMetadata?.totalTokenCount || 0,
-    };
+    // Deduct credits and track usage
+    const inputTokens = response.usageMetadata?.promptTokenCount || 0;
+    const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
 
-    // Deduct credits (unless super admin)
-    if (!isSuperAdmin) {
-      const deductResult = await deductCredits(
-        userId,
-        tokenUsage.promptTokens,
-        tokenUsage.completionTokens,
-        'web_summary',
-        modelTier,
-        {
-          inputType: 'text',
-          useGroundingSearch: groundingOptions?.useGoogleSearch,
-          useGroundingMaps: groundingOptions?.useGoogleMaps,
-          useCaching: !!cachingOptions?.cacheId,
-          cachedTokens: 0, // TODO: Get actual cached tokens from cache metadata
-        }
-      );
-
-      if (!deductResult.success) {
-        throw new Error(deductResult.message || 'Failed to deduct credits');
-      }
-    }
-
-    // Track token usage if callback provided
-    if (onTokenUsage) {
-      onTokenUsage(tokenUsage);
-    }
+    await deductCreditsWithCallback(
+      userId,
+      isSuperAdmin,
+      inputTokens,
+      outputTokens,
+      'web_summary',
+      modelTier,
+      'text',
+      groundingOptions,
+      cachingOptions,
+      onTokenUsage
+    );
 
     return response.text();
   } catch (error) {
@@ -657,39 +854,22 @@ Remember: Respond in the SAME LANGUAGE as the question above.`;
     const result = await model.generateContent(prompt);
     const response = await result.response;
 
-    // Get token usage
-    const tokenUsage: TokenUsage = {
-      promptTokens: response.usageMetadata?.promptTokenCount || 0,
-      completionTokens: response.usageMetadata?.candidatesTokenCount || 0,
-      totalTokens: response.usageMetadata?.totalTokenCount || 0,
-    };
+    // Deduct credits and track usage
+    const inputTokens = response.usageMetadata?.promptTokenCount || 0;
+    const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
 
-    // Deduct credits (unless super admin)
-    if (!isSuperAdmin) {
-      const deductResult = await deductCredits(
-        userId,
-        tokenUsage.promptTokens,
-        tokenUsage.completionTokens,
-        'web_qa',
-        modelTier,
-        {
-          inputType: 'text',
-          useGroundingSearch: groundingOptions?.useGoogleSearch,
-          useGroundingMaps: groundingOptions?.useGoogleMaps,
-          useCaching: !!cachingOptions?.cacheId,
-          cachedTokens: 0, // TODO: Get actual cached tokens from cache metadata
-        }
-      );
-
-      if (!deductResult.success) {
-        throw new Error(deductResult.message || 'Failed to deduct credits');
-      }
-    }
-
-    // Track token usage if callback provided
-    if (onTokenUsage) {
-      onTokenUsage(tokenUsage);
-    }
+    await deductCreditsWithCallback(
+      userId,
+      isSuperAdmin,
+      inputTokens,
+      outputTokens,
+      'web_qa',
+      modelTier,
+      'text',
+      groundingOptions,
+      cachingOptions,
+      onTokenUsage
+    );
 
     return response.text();
   } catch (error) {
@@ -785,39 +965,22 @@ Now analyze the text and provide your response:`;
     const result = await model.generateContent(prompt);
     const response = await result.response;
 
-    // Get token usage
-    const tokenUsage: TokenUsage = {
-      promptTokens: response.usageMetadata?.promptTokenCount || 0,
-      completionTokens: response.usageMetadata?.candidatesTokenCount || 0,
-      totalTokens: response.usageMetadata?.totalTokenCount || 0,
-    };
+    // Deduct credits and track usage
+    const inputTokens = response.usageMetadata?.promptTokenCount || 0;
+    const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
 
-    // Deduct credits (unless super admin)
-    if (!isSuperAdmin) {
-      const deductResult = await deductCredits(
-        userId,
-        tokenUsage.promptTokens,
-        tokenUsage.completionTokens,
-        'japanese_translation',
-        modelTier,
-        {
-          inputType: 'text',
-          useGroundingSearch: groundingOptions?.useGoogleSearch,
-          useGroundingMaps: groundingOptions?.useGoogleMaps,
-          useCaching: !!cachingOptions?.cacheId,
-          cachedTokens: 0, // TODO: Get actual cached tokens from cache metadata
-        }
-      );
-
-      if (!deductResult.success) {
-        throw new Error(deductResult.message || 'Failed to deduct credits');
-      }
-    }
-
-    // Track token usage if callback provided
-    if (onTokenUsage) {
-      onTokenUsage(tokenUsage);
-    }
+    await deductCreditsWithCallback(
+      userId,
+      isSuperAdmin,
+      inputTokens,
+      outputTokens,
+      'japanese_translation',
+      modelTier,
+      'text',
+      groundingOptions,
+      cachingOptions,
+      onTokenUsage
+    );
 
     return response.text();
   } catch (error) {
