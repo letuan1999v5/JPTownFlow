@@ -266,8 +266,8 @@ export default function AIChatScreen() {
       const userId = user?.uid || '';
       const userTier = subscription || 'FREE';
 
-      // Token usage callback for super admin
-      const onTokenUsage = isSuperAdmin ? (usage: TokenUsage) => {
+      // Token usage callback - show breakdown to all users
+      const onTokenUsage = (usage: TokenUsage) => {
         if (usage.breakdown) {
           // Show detailed breakdown
           const breakdown = usage.breakdown;
@@ -283,19 +283,21 @@ export default function AIChatScreen() {
             `💳 Credits deducted: ${breakdown.finalCredits}`;
 
           Alert.alert(
-            '🔧 Credit Calculation (Super Admin)',
+            '💳 Credit Calculation',
             message,
             [{ text: 'OK' }]
           );
         } else {
-          // Fallback to simple display
-          Alert.alert(
-            '🔧 Token Usage (Super Admin)',
-            `Prompt: ${usage.promptTokens}\nCompletion: ${usage.completionTokens}\nTotal: ${usage.totalTokens}`,
-            [{ text: 'OK' }]
-          );
+          // Fallback to simple display (for super admin debugging)
+          if (isSuperAdmin) {
+            Alert.alert(
+              '🔧 Token Usage (Debug)',
+              `Prompt: ${usage.promptTokens}\nCompletion: ${usage.completionTokens}\nTotal: ${usage.totalTokens}`,
+              [{ text: 'OK' }]
+            );
+          }
         }
-      } : undefined;
+      };
 
       const response = await chatWithAI(
         userId,

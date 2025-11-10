@@ -63,6 +63,10 @@ export default function JapaneseLearningScreen() {
   const [loading, setLoading] = useState(false);
   const [chatHistoryLoaded, setChatHistoryLoaded] = useState(false);
 
+  // Cache management state
+  const [cacheId, setCacheId] = useState<string | null>(null);
+  const [cacheCreatedAt, setCacheCreatedAt] = useState<Date | null>(null);
+
   const levels: JLPTLevel[] = ['N5', 'N4', 'N3', 'N2', 'N1'];
   const levelDescriptions: Record<JLPTLevel, string> = {
     N5: t('jlptN5', 'Beginner - Basic phrases and simple grammar'),
@@ -142,6 +146,14 @@ export default function JapaneseLearningScreen() {
           setTranslationLanguage(chatData.translationLanguage);
         }
         setIsImportant(chatData.isImportant || false);
+
+        // Load cache data if available
+        if (chatData.cacheId) {
+          setCacheId(chatData.cacheId);
+          if (chatData.cacheCreatedAt) {
+            setCacheCreatedAt(chatData.cacheCreatedAt.toDate());
+          }
+        }
       }
     } catch (error) {
       console.error('Error loading chat history:', error);
@@ -188,6 +200,8 @@ export default function JapaneseLearningScreen() {
         jlptLevel: currentLevel,
         translationLanguage: translationLanguage,
         isImportant: isImportant,
+        cacheId: cacheId || existingData?.cacheId || null,
+        cacheCreatedAt: cacheCreatedAt ? Timestamp.fromDate(cacheCreatedAt) : null,
         createdAt: existingData?.createdAt || now,
         lastUpdatedAt: now,
       });
@@ -270,14 +284,38 @@ export default function JapaneseLearningScreen() {
       const userId = user?.uid || '';
       const userTier = subscription || 'FREE';
 
-      // Token usage callback for super admin
-      const onTokenUsage = isSuperAdmin ? (usage: TokenUsage) => {
-        Alert.alert(
-          '🔧 Token Usage (Super Admin)',
-          `Prompt: ${usage.promptTokens}\nCompletion: ${usage.completionTokens}\nTotal: ${usage.totalTokens}`,
-          [{ text: 'OK' }]
-        );
-      } : undefined;
+      // Token usage callback - show breakdown to all users
+      const onTokenUsage = (usage: TokenUsage) => {
+        if (usage.breakdown) {
+          // Show detailed breakdown
+          const breakdown = usage.breakdown;
+          const message = `📊 MODEL: ${breakdown.modelTier.toUpperCase()} (${breakdown.promptSizeTier} prompt)\n\n` +
+            `💰 COST BREAKDOWN:\n` +
+            `• Input: ${breakdown.inputTokens.toLocaleString()} tokens × $${breakdown.inputPricePerMillion}/1M = $${breakdown.inputCostUSD.toFixed(6)}\n` +
+            `• Output: ${breakdown.outputTokens.toLocaleString()} tokens × $${breakdown.outputPricePerMillion}/1M = $${breakdown.outputCostUSD.toFixed(6)}\n` +
+            (breakdown.cachingCostUSD > 0 ? `• Cache: ${breakdown.cachedTokens.toLocaleString()} tokens × $${breakdown.cachingPricePerMillion}/1M = $${breakdown.cachingCostUSD.toFixed(6)}\n` : '') +
+            (breakdown.groundingDetails?.googleSearch ? `• Google Search: $${breakdown.groundingCostUSD.toFixed(6)}\n` : '') +
+            (breakdown.groundingDetails?.googleMaps ? `• Google Maps: $${breakdown.groundingCostUSD.toFixed(6)}\n` : '') +
+            `\n📈 TOTAL: $${breakdown.totalCostUSD.toFixed(6)}\n` +
+            `× ${breakdown.profitMargin}x margin = ${breakdown.finalCredits} credits\n\n` +
+            `💳 Credits deducted: ${breakdown.finalCredits}`;
+
+          Alert.alert(
+            '💳 Credit Calculation',
+            message,
+            [{ text: 'OK' }]
+          );
+        } else {
+          // Fallback to simple display (for super admin debugging)
+          if (isSuperAdmin) {
+            Alert.alert(
+              '🔧 Token Usage (Debug)',
+              `Prompt: ${usage.promptTokens}\nCompletion: ${usage.completionTokens}\nTotal: ${usage.totalTokens}`,
+              [{ text: 'OK' }]
+            );
+          }
+        }
+      };
 
       const response = await chatJapaneseLearning(
         userId,
@@ -286,7 +324,19 @@ export default function JapaneseLearningScreen() {
         jlptLevel,
         translationLanguage,
         selectedModel,
-        onTokenUsage
+        onTokenUsage,
+        undefined, // groundingOptions
+        {
+          cacheId: cacheId || undefined,
+          cacheCreatedAt: cacheCreatedAt || undefined,
+          onCacheCreated: (newCacheId: string, createdAt: Date) => {
+            setCacheId(newCacheId);
+            setCacheCreatedAt(createdAt);
+          },
+          onCacheUpdated: (updatedCacheId: string, updatedAt: Date) => {
+            setCacheCreatedAt(updatedAt);
+          },
+        }
       );
 
       const assistantMessage: ChatMessage = {

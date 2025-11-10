@@ -608,7 +608,6 @@ export async function chatJapaneseLearning(
     }
 
     const modelName = GEMINI_MODELS[modelTier];
-    const model = genAI.getGenerativeModel({ model: modelName });
 
     // Convert language code to full language name
     const languageName = getLanguageName(userLanguage);
@@ -659,29 +658,130 @@ Remember: Be encouraging and patient. Respond primarily in Japanese, but explain
 CRITICAL: ALL translations in the {{kanji|hiragana|translation}} format MUST be in ${languageName} language.
 For example, if the language is Vietnamese, write {{会話|かいわ|hội thoại}}, NOT {{会話|かいわ|conversation}}.`;
 
-    // Build conversation with system prompt
-    const history = [
-      {
-        role: 'user',
-        parts: [{ text: systemPrompt }],
-      },
-      {
-        role: 'model',
-        parts: [{ text: 'はい、分かりました。${jlptLevel}レベルで教えます！' }],
-      },
-      ...messages.slice(0, -1).map(msg => ({
-        role: msg.role === 'user' ? 'user' : 'model',
-        parts: [{ text: msg.content }],
-      })),
-    ];
+    // ============================================
+    // CACHE MANAGEMENT
+    // ============================================
 
-    const chat = model.startChat({ history });
-    const lastMessage = messages[messages.length - 1].content;
+    let useCachedContent = false;
+    let cachedTokens = 0;
 
-    const result = await chat.sendMessage(lastMessage);
-    const response = await result.response;
+    // Step B: Check and manage existing cache
+    if (cachingOptions?.cacheId && cachingOptions?.cacheCreatedAt) {
+      const cacheValid = isCacheValid(cachingOptions.cacheCreatedAt);
 
-    // Deduct credits and track usage
+      if (cacheValid) {
+        // Cache is still valid - check if renewal is needed (55-minute logic)
+        try {
+          await checkAndRenewCacheIfNeeded(
+            cachingOptions.cacheId,
+            cachingOptions.cacheCreatedAt,
+            cachingOptions.onCacheUpdated
+          );
+        } catch (error) {
+          console.warn('Cache renewal failed, continuing with existing cache:', error);
+        }
+
+        useCachedContent = true;
+        console.log(`Using existing cache for Japanese Learning: ${cachingOptions.cacheId}`);
+      } else {
+        console.log('Cache expired, will create new cache after response');
+      }
+    }
+
+    // ============================================
+    // API CALL (with or without cache)
+    // ============================================
+
+    let response;
+    let result;
+
+    if (useCachedContent && cachingOptions?.cacheId) {
+      // Use cached content (Step B.3)
+      try {
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          cachedContent: cachingOptions.cacheId,
+        });
+
+        const lastMessage = messages[messages.length - 1].content;
+        result = await model.generateContent(lastMessage);
+        response = await result.response;
+
+        // Get cached token count from metadata if available
+        cachedTokens = response.usageMetadata?.cachedContentTokenCount || 0;
+      } catch (error: any) {
+        // If cache not found (404), fall back to non-cached call
+        if (error?.message?.includes('404') || error?.message?.includes('not found')) {
+          console.warn('Cache not found, falling back to full history');
+          useCachedContent = false;
+          cachedTokens = 0;
+        } else {
+          throw error;
+        }
+      }
+    }
+
+    if (!useCachedContent) {
+      // No cache or cache failed - use full conversation history (Step C)
+      const model = genAI.getGenerativeModel({ model: modelName });
+
+      // Build conversation with system prompt
+      const history = [
+        {
+          role: 'user',
+          parts: [{ text: systemPrompt }],
+        },
+        {
+          role: 'model',
+          parts: [{ text: `はい、分かりました。${jlptLevel}レベルで教えます！` }],
+        },
+        ...messages.slice(0, -1).map(msg => ({
+          role: msg.role === 'user' ? 'user' : 'model',
+          parts: [{ text: msg.content }],
+        })),
+      ];
+
+      const chat = model.startChat({ history });
+      const lastMessage = messages[messages.length - 1].content;
+
+      result = await chat.sendMessage(lastMessage);
+      response = await result.response;
+    }
+
+    // ============================================
+    // CACHE CREATION/UPDATE (Step A or B.4)
+    // ============================================
+
+    // After getting response, create new cache with full conversation
+    if (messages.length >= 2) { // Only cache if there's actual history
+      try {
+        // Build full conversation history for caching
+        const fullConversationForCache: ChatMessage[] = [
+          { role: 'user', content: systemPrompt },
+          { role: 'assistant', content: `はい、分かりました。${jlptLevel}レベルで教えます！` },
+          ...messages,
+          { role: 'assistant', content: response.text() },
+        ];
+
+        const cacheMetadata = await createCachedContent(modelName, fullConversationForCache);
+
+        // Notify UI to save new cache ID
+        if (cachingOptions?.onCacheCreated) {
+          cachingOptions.onCacheCreated(cacheMetadata.cacheId, cacheMetadata.createdAt);
+        }
+
+        cachedTokens = cacheMetadata.cachedTokenCount;
+        console.log(`Japanese Learning cache created: ${cacheMetadata.cacheId} (${cachedTokens} tokens)`);
+      } catch (error) {
+        console.error('Failed to create Japanese Learning cache, continuing without caching:', error);
+        // Don't throw - caching is optional optimization
+      }
+    }
+
+    // ============================================
+    // CREDIT DEDUCTION
+    // ============================================
+
     const inputTokens = response.usageMetadata?.promptTokenCount || 0;
     const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
 
@@ -694,8 +794,12 @@ For example, if the language is Vietnamese, write {{会話|かいわ|hội tho�
       modelTier,
       'text',
       groundingOptions,
-      cachingOptions,
-      onTokenUsage
+      {
+        ...cachingOptions,
+        cacheId: useCachedContent ? cachingOptions?.cacheId : undefined,
+      },
+      onTokenUsage,
+      cachedTokens // Pass cached token count for pricing
     );
 
     return response.text();
