@@ -15,10 +15,11 @@ const CACHE_TTL_MINUTES = 60;
 const CACHE_RENEWAL_THRESHOLD_MINUTES = 55;
 
 // Gemini API initialization
+// Using environment variables (.env file) instead of deprecated functions.config()
 const getGeminiClients = () => {
-  const apiKey = functions.config().gemini?.apikey || process.env.GOOGLE_AI_API_KEY;
+  const apiKey = process.env.GOOGLE_AI_API_KEY;
   if (!apiKey) {
-    throw new Error('Gemini API key not configured');
+    throw new Error('GOOGLE_AI_API_KEY environment variable not configured. Please set it in functions/.env file');
   }
   return {
     genAI: new GoogleGenerativeAI(apiKey),

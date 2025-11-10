@@ -1,0 +1,28 @@
+# Compiled JavaScript files
+lib/
+*.js
+*.js.map
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Node modules
+node_modules/
+
+# Environment variables (NEVER commit secrets!)
+.env
+
+# Firebase cache
+.firebase/
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+firebase-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock

@@ -33,16 +33,25 @@ cd functions
 npm install
 ```
 
-### 2. Configure Firebase
+### 2. Configure Environment Variables
+
+Create `.env` file in `functions/` folder:
 
 ```bash
-# Initialize Firebase (if not done)
-firebase login
-firebase init functions
-
-# Set Gemini API key
-firebase functions:config:set gemini.apikey="YOUR_GOOGLE_AI_API_KEY"
+cd functions
+cp .env.example .env
 ```
+
+Edit `functions/.env` and add your API key:
+```env
+GOOGLE_AI_API_KEY=your_actual_google_ai_api_key_here
+```
+
+Get your API key from:
+- Google AI Studio: https://makersuite.google.com/app/apikey
+- Or copy from root `.env` file: `EXPO_PUBLIC_GOOGLE_AI_API_KEY`
+
+**IMPORTANT:** Never commit `.env` file to git! It's already in `.gitignore`.
 
 ### 3. Deploy Functions
 
