@@ -2,7 +2,7 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { GoogleAICacheManager } from '@google/generative-ai/server';
-import * as cors from 'cors';
+import cors from 'cors';
 
 // Initialize Firebase Admin
 admin.initializeApp();
@@ -52,8 +52,8 @@ function isCacheValid(cacheCreatedAt: Date): boolean {
  */
 async function renewCacheTTL(cacheManager: GoogleAICacheManager, cacheId: string): Promise<Date> {
   await cacheManager.update(cacheId, {
-    ttl: CACHE_TTL_MINUTES * 60,
-  });
+    ttlSeconds: CACHE_TTL_MINUTES * 60,
+  } as any); // Type assertion needed due to SDK type definitions
   return new Date();
 }
 
@@ -98,13 +98,13 @@ async function createCachedContent(
   const cacheResult = await cacheManager.create({
     model: modelName,
     contents: contents,
-    ttl: CACHE_TTL_MINUTES * 60,
-  });
+    ttlSeconds: CACHE_TTL_MINUTES * 60,
+  } as any); // Type assertion needed due to SDK type definitions
 
   return {
-    cacheId: cacheResult.name,
+    cacheId: cacheResult.name || '',
     createdAt: new Date(),
-    cachedTokenCount: cacheResult.usageMetadata?.totalTokenCount || 0,
+    cachedTokenCount: (cacheResult as any).usageMetadata?.totalTokenCount || 0,
   };
 }
 
@@ -233,6 +233,11 @@ export const geminiChat = functions.https.onRequest((request, response) => {
         const lastMessage = messages[messages.length - 1].content;
         result = await chat.sendMessage(lastMessage);
         apiResponse = await result.response;
+      }
+
+      // Ensure apiResponse is set
+      if (!apiResponse) {
+        throw new Error('Failed to get API response');
       }
 
       // Create new cache after response (if conversation long enough)
