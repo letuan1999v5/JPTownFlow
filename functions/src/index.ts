@@ -421,11 +421,14 @@ export const geminiChat = functions.https.onRequest((request, response) => {
           // Count tokens for cache creation
           const cacheTokenCount = await countMessageTokens(genAI, modelName, fullConversation);
 
-          // Gemini API requires minimum 32K tokens for caching
-          const MINIMUM_CACHE_TOKENS = 32768;
+          // Gemini API requires minimum 4K tokens for caching
+          const MINIMUM_CACHE_TOKENS = 4096;
+
+          console.log(`📊 Cache creation check: ${cacheTokenCount} tokens (minimum: ${MINIMUM_CACHE_TOKENS})`);
+          console.log(`📝 Full conversation: ${fullConversation.length} messages | Original: ${messages.length} messages`);
 
           if (cacheTokenCount < MINIMUM_CACHE_TOKENS) {
-            console.log(`Conversation too short for caching: ${cacheTokenCount} tokens (minimum: ${MINIMUM_CACHE_TOKENS}). Cache will be created when conversation is longer.`);
+            console.log(`⏭️ Conversation too short for caching: ${cacheTokenCount} tokens (minimum: ${MINIMUM_CACHE_TOKENS}). Cache will be created when conversation is longer.`);
           } else {
             // Check if cache creation is too large (warning only, not blocking)
             if (cacheTokenCount > config.cacheCreationWarningThreshold) {
