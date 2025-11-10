@@ -1,9 +1,16 @@
 const admin = require('firebase-admin');
 
-// Initialize with your service account or default credentials
-admin.initializeApp();
+// Get project ID from environment variable or use default
+const projectId = process.env.FIREBASE_PROJECT_ID || 'jp-town-flow-app';
+
+// Initialize with project ID
+admin.initializeApp({
+  projectId: projectId
+});
 
 const db = admin.firestore();
+
+console.log(`🔧 Using Firebase project: ${projectId}`);
 
 async function seedTokenLimits() {
   const config = {
