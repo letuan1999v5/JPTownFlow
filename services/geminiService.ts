@@ -1,8 +1,20 @@
 // services/geminiService.ts
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { AIModelTier, GEMINI_MODELS, canUseModel } from '../types/credits';
+import { AIModelTier, GEMINI_MODELS, canUseModel, InputType } from '../types/credits';
 import { deductCredits, checkAndResetCredits } from './creditsService';
+
+// Grounding options
+export interface GroundingOptions {
+  useGoogleSearch?: boolean;
+  useGoogleMaps?: boolean;
+}
+
+// Context caching options
+export interface CachingOptions {
+  cacheId?: string; // Existing cache ID to use
+  onCacheCreated?: (cacheId: string) => void; // Callback when new cache is created
+}
 
 // Initialize Gemini AI
 const API_KEY = process.env.EXPO_PUBLIC_GOOGLE_AI_API_KEY || '';
@@ -60,7 +72,9 @@ export async function analyzeGarbageImage(
   wasteCategories: any, // Rules từ Firestore
   language: string = 'vi',
   modelTier: AIModelTier = 'lite',
-  onTokenUsage?: TokenUsageCallback
+  onTokenUsage?: TokenUsageCallback,
+  groundingOptions?: GroundingOptions,
+  cachingOptions?: CachingOptions
 ): Promise<GarbageAnalysisResult> {
   try {
     // Check if user is super admin (unlimited credits)
@@ -183,7 +197,14 @@ Respond in JSON format:
         tokenUsage.promptTokens,
         tokenUsage.completionTokens,
         'garbage_analysis',
-        modelTier
+        modelTier,
+        {
+          inputType: 'image',
+          useGroundingSearch: groundingOptions?.useGoogleSearch,
+          useGroundingMaps: groundingOptions?.useGoogleMaps,
+          useCaching: !!cachingOptions?.cacheId,
+          cachedTokens: 0, // TODO: Get actual cached tokens from cache metadata
+        }
       );
 
       if (!deductResult.success) {
@@ -247,7 +268,9 @@ export async function chatWithAI(
   messages: ChatMessage[],
   language: string = 'en',
   modelTier: AIModelTier = 'lite',
-  onTokenUsage?: TokenUsageCallback
+  onTokenUsage?: TokenUsageCallback,
+  groundingOptions?: GroundingOptions,
+  cachingOptions?: CachingOptions
 ): Promise<string> {
   try {
     // Check if user is super admin (unlimited credits)
@@ -298,7 +321,14 @@ export async function chatWithAI(
         tokenUsage.promptTokens,
         tokenUsage.completionTokens,
         'ai_chat',
-        modelTier
+        modelTier,
+        {
+          inputType: 'text',
+          useGroundingSearch: groundingOptions?.useGoogleSearch,
+          useGroundingMaps: groundingOptions?.useGoogleMaps,
+          useCaching: !!cachingOptions?.cacheId,
+          cachedTokens: 0, // TODO: Get actual cached tokens from cache metadata
+        }
       );
 
       if (!deductResult.success) {
@@ -328,7 +358,9 @@ export async function chatJapaneseLearning(
   jlptLevel: 'N1' | 'N2' | 'N3' | 'N4' | 'N5',
   userLanguage: string = 'en',
   modelTier: AIModelTier = 'lite',
-  onTokenUsage?: TokenUsageCallback
+  onTokenUsage?: TokenUsageCallback,
+  groundingOptions?: GroundingOptions,
+  cachingOptions?: CachingOptions
 ): Promise<string> {
   try {
     // Check if user is super admin (unlimited credits)
@@ -432,7 +464,14 @@ For example, if the language is Vietnamese, write {{会話|かいわ|hội tho�
         tokenUsage.promptTokens,
         tokenUsage.completionTokens,
         'japanese_learning',
-        modelTier
+        modelTier,
+        {
+          inputType: 'text',
+          useGroundingSearch: groundingOptions?.useGoogleSearch,
+          useGroundingMaps: groundingOptions?.useGoogleMaps,
+          useCaching: !!cachingOptions?.cacheId,
+          cachedTokens: 0, // TODO: Get actual cached tokens from cache metadata
+        }
       );
 
       if (!deductResult.success) {
@@ -461,7 +500,9 @@ export async function summarizeWebContent(
   htmlContent: string,
   language: string = 'en',
   modelTier: AIModelTier = 'lite',
-  onTokenUsage?: TokenUsageCallback
+  onTokenUsage?: TokenUsageCallback,
+  groundingOptions?: GroundingOptions,
+  cachingOptions?: CachingOptions
 ): Promise<string> {
   try {
     // Check if user is super admin (unlimited credits)
@@ -518,7 +559,14 @@ ${htmlContent.substring(0, 10000)}...`; // Limit content to avoid token limits
         tokenUsage.promptTokens,
         tokenUsage.completionTokens,
         'web_summary',
-        modelTier
+        modelTier,
+        {
+          inputType: 'text',
+          useGroundingSearch: groundingOptions?.useGoogleSearch,
+          useGroundingMaps: groundingOptions?.useGoogleMaps,
+          useCaching: !!cachingOptions?.cacheId,
+          cachedTokens: 0, // TODO: Get actual cached tokens from cache metadata
+        }
       );
 
       if (!deductResult.success) {
@@ -548,7 +596,9 @@ export async function askAboutWebContent(
   question: string,
   language: string = 'en',
   modelTier: AIModelTier = 'lite',
-  onTokenUsage?: TokenUsageCallback
+  onTokenUsage?: TokenUsageCallback,
+  groundingOptions?: GroundingOptions,
+  cachingOptions?: CachingOptions
 ): Promise<string> {
   try {
     // Check if user is super admin (unlimited credits)
@@ -621,7 +671,14 @@ Remember: Respond in the SAME LANGUAGE as the question above.`;
         tokenUsage.promptTokens,
         tokenUsage.completionTokens,
         'web_qa',
-        modelTier
+        modelTier,
+        {
+          inputType: 'text',
+          useGroundingSearch: groundingOptions?.useGoogleSearch,
+          useGroundingMaps: groundingOptions?.useGoogleMaps,
+          useCaching: !!cachingOptions?.cacheId,
+          cachedTokens: 0, // TODO: Get actual cached tokens from cache metadata
+        }
       );
 
       if (!deductResult.success) {
@@ -650,7 +707,9 @@ export async function translateJapanese(
   japaneseText: string,
   targetLanguage: string = 'en',
   modelTier: AIModelTier = 'lite',
-  onTokenUsage?: TokenUsageCallback
+  onTokenUsage?: TokenUsageCallback,
+  groundingOptions?: GroundingOptions,
+  cachingOptions?: CachingOptions
 ): Promise<string> {
   try {
     // Check if user is super admin (unlimited credits)
@@ -740,7 +799,14 @@ Now analyze the text and provide your response:`;
         tokenUsage.promptTokens,
         tokenUsage.completionTokens,
         'japanese_translation',
-        modelTier
+        modelTier,
+        {
+          inputType: 'text',
+          useGroundingSearch: groundingOptions?.useGoogleSearch,
+          useGroundingMaps: groundingOptions?.useGoogleMaps,
+          useCaching: !!cachingOptions?.cacheId,
+          cachedTokens: 0, // TODO: Get actual cached tokens from cache metadata
+        }
       );
 
       if (!deductResult.success) {
