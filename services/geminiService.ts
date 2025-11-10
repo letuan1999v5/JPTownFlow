@@ -1,7 +1,6 @@
 // services/geminiService.ts
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { GoogleAICacheManager } from '@google/generative-ai/server';
 import { AIModelTier, GEMINI_MODELS, canUseModel, InputType, CreditBreakdown } from '../types/credits';
 import { deductCredits, checkAndResetCredits } from './creditsService';
 
@@ -12,28 +11,23 @@ export interface GroundingOptions {
 }
 
 // Context caching options
+// NOTE: Explicit caching requires Cloud Functions (server-side only)
+// Currently using Google's Implicit Caching for automatic cost savings
 export interface CachingOptions {
-  cacheId?: string; // Existing cache ID to use
-  cacheCreatedAt?: Date; // When the cache was created (for 55-min logic)
-  onCacheCreated?: (cacheId: string, createdAt: Date) => void; // Callback when new cache is created
-  onCacheUpdated?: (cacheId: string, updatedAt: Date) => void; // Callback when cache TTL is renewed
+  cacheId?: string; // Reserved for future cloud function implementation
+  cacheCreatedAt?: Date; // Reserved for future cloud function implementation
+  onCacheCreated?: (cacheId: string, createdAt: Date) => void; // Reserved for future cloud function implementation
+  onCacheUpdated?: (cacheId: string, updatedAt: Date) => void; // Reserved for future cloud function implementation
 }
 
-// Cache metadata
-export interface CacheMetadata {
-  cacheId: string;
-  createdAt: Date;
-  cachedTokenCount: number;
-}
+// Cloud Function URL for explicit caching (optional)
+// Set this after deploying Firebase Cloud Functions
+const CLOUD_FUNCTION_URL = process.env.EXPO_PUBLIC_GEMINI_CLOUD_FUNCTION_URL || '';
+const USE_CLOUD_FUNCTION = Boolean(CLOUD_FUNCTION_URL);
 
-// Cache management constants
-const CACHE_TTL_MINUTES = 60; // Google's cache TTL
-const CACHE_RENEWAL_THRESHOLD_MINUTES = 55; // Renew if older than this
-
-// Initialize Gemini AI
+// Initialize Gemini AI (fallback for direct API calls)
 const API_KEY = process.env.EXPO_PUBLIC_GOOGLE_AI_API_KEY || '';
 const genAI = new GoogleGenerativeAI(API_KEY);
-const cacheManager = new GoogleAICacheManager(API_KEY);
 
 // Token usage metadata interface with optional detailed breakdown
 export interface TokenUsage {
@@ -112,95 +106,48 @@ async function deductCreditsWithCallback(
 }
 
 /**
- * Create a new cached content for conversation history
- * @returns Cache ID and metadata
- *
- * Note: Google requires minimum 32,769 tokens. If conversation is too short,
- * API will throw error which is handled gracefully by caller.
+ * Call Cloud Function for Gemini API with explicit caching
+ * This provides 90% discount on cached tokens vs implicit caching's 75-90%
  */
-async function createCachedContent(
-  modelName: string,
-  conversationHistory: ChatMessage[]
-): Promise<CacheMetadata> {
-  // Build contents array for caching
-  const contents = conversationHistory.map(msg => ({
-    role: msg.role === 'user' ? 'user' : 'model',
-    parts: [{ text: msg.content }],
-  }));
-
-  // Create cache using Google's caching API
-  // Let Google API validate token count - it will throw error if < 32,769 tokens
-  const cacheResult = await cacheManager.create({
-    model: modelName,
-    contents: contents,
-    ttl: CACHE_TTL_MINUTES * 60, // Convert to seconds
+async function callGeminiCloudFunction(
+  messages: ChatMessage[],
+  modelTier: AIModelTier,
+  cacheId?: string,
+  cacheCreatedAt?: Date,
+  systemPrompt?: string
+): Promise<{
+  text: string;
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    cachedTokens: number;
+  };
+  cache?: {
+    cacheId: string;
+    createdAt: string;
+  };
+}> {
+  const response = await fetch(CLOUD_FUNCTION_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      messages,
+      modelTier,
+      cacheId,
+      cacheCreatedAt: cacheCreatedAt?.toISOString(),
+      systemPrompt,
+    }),
   });
 
-  return {
-    cacheId: cacheResult.name, // e.g., "cachedContents/xyz-123"
-    createdAt: new Date(),
-    cachedTokenCount: cacheResult.usageMetadata?.totalTokenCount || 0,
-  };
-}
-
-/**
- * Update cache TTL to extend its lifetime
- * @returns Updated timestamp
- */
-async function renewCacheTTL(cacheId: string): Promise<Date> {
-  try {
-    // Update cache TTL using Google's caching API
-    await cacheManager.update(cacheId, {
-      ttl: CACHE_TTL_MINUTES * 60, // Reset to 60 minutes
-    });
-
-    return new Date();
-  } catch (error) {
-    console.error('Failed to renew cache TTL:', error);
-    // Don't throw - fall back to creating new cache
-    throw error;
-  }
-}
-
-/**
- * Check if cache needs renewal (55-minute logic)
- * @returns true if cache was renewed, false if no action needed
- */
-async function checkAndRenewCacheIfNeeded(
-  cacheId: string,
-  cacheCreatedAt: Date,
-  onCacheUpdated?: (cacheId: string, updatedAt: Date) => void
-): Promise<boolean> {
-  const now = new Date();
-  const elapsedMinutes = (now.getTime() - cacheCreatedAt.getTime()) / (1000 * 60);
-
-  // Logic 55 phút: Renew if between 55 and 60 minutes
-  if (elapsedMinutes >= CACHE_RENEWAL_THRESHOLD_MINUTES && elapsedMinutes < CACHE_TTL_MINUTES) {
-    try {
-      const updatedAt = await renewCacheTTL(cacheId);
-      console.log(`Cache renewed: ${cacheId} (elapsed: ${elapsedMinutes.toFixed(1)} min)`);
-
-      if (onCacheUpdated) {
-        onCacheUpdated(cacheId, updatedAt);
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Cache renewal failed, will create new cache:', error);
-      return false;
-    }
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Cloud function request failed');
   }
 
-  return false;
-}
-
-/**
- * Check if cache is still valid (not expired)
- */
-function isCacheValid(cacheCreatedAt: Date): boolean {
-  const now = new Date();
-  const elapsedMinutes = (now.getTime() - cacheCreatedAt.getTime()) / (1000 * 60);
-  return elapsedMinutes < CACHE_TTL_MINUTES;
+  return response.json();
 }
 
 // Map language codes to full language names for better AI understanding
@@ -436,117 +383,33 @@ export async function chatWithAI(
     }
 
     const modelName = GEMINI_MODELS[modelTier];
-    let useCachedContent = false;
     let cachedTokens = 0;
 
     // ============================================
-    // CACHE MANAGEMENT LOGIC
+    // API CALL - Direct to Gemini (uses Google's Implicit Caching)
     // ============================================
+    // NOTE: Explicit caching removed - not compatible with React Native
+    // Google's Implicit Caching provides automatic 75-90% discount
+    // For 90% guaranteed discount, deploy Cloud Functions (see functions/ folder)
 
-    // Step B: Check and manage existing cache
-    if (cachingOptions?.cacheId && cachingOptions?.cacheCreatedAt) {
-      const cacheValid = isCacheValid(cachingOptions.cacheCreatedAt);
+    const model = genAI.getGenerativeModel({ model: modelName });
 
-      if (cacheValid) {
-        // Cache is still valid - check if renewal is needed (55-minute logic)
-        try {
-          await checkAndRenewCacheIfNeeded(
-            cachingOptions.cacheId,
-            cachingOptions.cacheCreatedAt,
-            cachingOptions.onCacheUpdated
-          );
-        } catch (error) {
-          console.warn('Cache renewal failed, continuing with existing cache:', error);
-        }
+    // Build conversation history (exclude last message)
+    let history = messages.slice(0, -1).map(msg => ({
+      role: msg.role === 'user' ? 'user' : 'model',
+      parts: [{ text: msg.content }],
+    }));
 
-        useCachedContent = true;
-        console.log(`Using existing cache: ${cachingOptions.cacheId}`);
-      } else {
-        console.log('Cache expired, will create new cache after response');
-      }
+    // Gemini requires first message to be from user
+    while (history.length > 0 && history[0].role === 'model') {
+      history = history.slice(1);
     }
 
-    // ============================================
-    // API CALL (with or without cache)
-    // ============================================
+    const chat = model.startChat({ history });
+    const lastMessage = messages[messages.length - 1].content;
 
-    let response;
-    let result;
-
-    if (useCachedContent && cachingOptions?.cacheId) {
-      // Use cached content (Step B.3)
-      try {
-        const model = genAI.getGenerativeModel({
-          model: modelName,
-          cachedContent: cachingOptions.cacheId,
-        });
-
-        const lastMessage = messages[messages.length - 1].content;
-        result = await model.generateContent(lastMessage);
-        response = await result.response;
-
-        // Get cached token count from metadata if available
-        cachedTokens = response.usageMetadata?.cachedContentTokenCount || 0;
-      } catch (error: any) {
-        // If cache not found (404), fall back to non-cached call
-        if (error?.message?.includes('404') || error?.message?.includes('not found')) {
-          console.warn('Cache not found, falling back to full history');
-          useCachedContent = false;
-          cachedTokens = 0;
-        } else {
-          throw error;
-        }
-      }
-    }
-
-    if (!useCachedContent) {
-      // No cache or cache failed - use full conversation history (Step C)
-      const model = genAI.getGenerativeModel({ model: modelName });
-
-      // Build conversation history (exclude last message)
-      let history = messages.slice(0, -1).map(msg => ({
-        role: msg.role === 'user' ? 'user' : 'model',
-        parts: [{ text: msg.content }],
-      }));
-
-      // Gemini requires first message to be from user
-      while (history.length > 0 && history[0].role === 'model') {
-        history = history.slice(1);
-      }
-
-      const chat = model.startChat({ history });
-      const lastMessage = messages[messages.length - 1].content;
-
-      result = await chat.sendMessage(lastMessage);
-      response = await result.response;
-    }
-
-    // ============================================
-    // CACHE CREATION/UPDATE (Step A or B.4)
-    // ============================================
-
-    // After getting response, create new cache with full conversation
-    if (messages.length >= 2) { // Only cache if there's actual history
-      try {
-        const fullConversation = [...messages, {
-          role: 'assistant' as const,
-          content: response.text(),
-        }];
-
-        const cacheMetadata = await createCachedContent(modelName, fullConversation);
-
-        // Notify UI to save new cache ID
-        if (cachingOptions?.onCacheCreated) {
-          cachingOptions.onCacheCreated(cacheMetadata.cacheId, cacheMetadata.createdAt);
-        }
-
-        cachedTokens = cacheMetadata.cachedTokenCount;
-        console.log(`Cache created: ${cacheMetadata.cacheId} (${cachedTokens} tokens)`);
-      } catch (error) {
-        console.error('Failed to create cache, continuing without caching:', error);
-        // Don't throw - caching is optional optimization
-      }
-    }
+    const result = await chat.sendMessage(lastMessage);
+    const response = await result.response;
 
     // ============================================
     // CREDIT DEDUCTION
@@ -554,6 +417,9 @@ export async function chatWithAI(
 
     const inputTokens = response.usageMetadata?.promptTokenCount || 0;
     const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
+
+    // Get cached token count from response metadata (implicit caching)
+    cachedTokens = response.usageMetadata?.cachedContentTokenCount || 0;
 
     await deductCreditsWithCallback(
       userId,
@@ -564,10 +430,7 @@ export async function chatWithAI(
       modelTier,
       'text',
       groundingOptions,
-      {
-        ...cachingOptions,
-        cacheId: useCachedContent ? cachingOptions?.cacheId : undefined,
-      },
+      undefined, // No explicit cache management
       onTokenUsage,
       cachedTokens // Pass cached token count for pricing
     );
@@ -659,124 +522,35 @@ CRITICAL: ALL translations in the {{kanji|hiragana|translation}} format MUST be 
 For example, if the language is Vietnamese, write {{会話|かいわ|hội thoại}}, NOT {{会話|かいわ|conversation}}.`;
 
     // ============================================
-    // CACHE MANAGEMENT
+    // API CALL - Direct to Gemini (uses Google's Implicit Caching)
     // ============================================
+    // NOTE: Explicit caching removed - not compatible with React Native
+    // Google's Implicit Caching provides automatic 75-90% discount
 
-    let useCachedContent = false;
     let cachedTokens = 0;
+    const model = genAI.getGenerativeModel({ model: modelName });
 
-    // Step B: Check and manage existing cache
-    if (cachingOptions?.cacheId && cachingOptions?.cacheCreatedAt) {
-      const cacheValid = isCacheValid(cachingOptions.cacheCreatedAt);
+    // Build conversation with system prompt
+    const history = [
+      {
+        role: 'user',
+        parts: [{ text: systemPrompt }],
+      },
+      {
+        role: 'model',
+        parts: [{ text: `はい、分かりました。${jlptLevel}レベルで教えます！` }],
+      },
+      ...messages.slice(0, -1).map(msg => ({
+        role: msg.role === 'user' ? 'user' : 'model',
+        parts: [{ text: msg.content }],
+      })),
+    ];
 
-      if (cacheValid) {
-        // Cache is still valid - check if renewal is needed (55-minute logic)
-        try {
-          await checkAndRenewCacheIfNeeded(
-            cachingOptions.cacheId,
-            cachingOptions.cacheCreatedAt,
-            cachingOptions.onCacheUpdated
-          );
-        } catch (error) {
-          console.warn('Cache renewal failed, continuing with existing cache:', error);
-        }
+    const chat = model.startChat({ history });
+    const lastMessage = messages[messages.length - 1].content;
 
-        useCachedContent = true;
-        console.log(`Using existing cache for Japanese Learning: ${cachingOptions.cacheId}`);
-      } else {
-        console.log('Cache expired, will create new cache after response');
-      }
-    }
-
-    // ============================================
-    // API CALL (with or without cache)
-    // ============================================
-
-    let response;
-    let result;
-
-    if (useCachedContent && cachingOptions?.cacheId) {
-      // Use cached content (Step B.3)
-      try {
-        const model = genAI.getGenerativeModel({
-          model: modelName,
-          cachedContent: cachingOptions.cacheId,
-        });
-
-        const lastMessage = messages[messages.length - 1].content;
-        result = await model.generateContent(lastMessage);
-        response = await result.response;
-
-        // Get cached token count from metadata if available
-        cachedTokens = response.usageMetadata?.cachedContentTokenCount || 0;
-      } catch (error: any) {
-        // If cache not found (404), fall back to non-cached call
-        if (error?.message?.includes('404') || error?.message?.includes('not found')) {
-          console.warn('Cache not found, falling back to full history');
-          useCachedContent = false;
-          cachedTokens = 0;
-        } else {
-          throw error;
-        }
-      }
-    }
-
-    if (!useCachedContent) {
-      // No cache or cache failed - use full conversation history (Step C)
-      const model = genAI.getGenerativeModel({ model: modelName });
-
-      // Build conversation with system prompt
-      const history = [
-        {
-          role: 'user',
-          parts: [{ text: systemPrompt }],
-        },
-        {
-          role: 'model',
-          parts: [{ text: `はい、分かりました。${jlptLevel}レベルで教えます！` }],
-        },
-        ...messages.slice(0, -1).map(msg => ({
-          role: msg.role === 'user' ? 'user' : 'model',
-          parts: [{ text: msg.content }],
-        })),
-      ];
-
-      const chat = model.startChat({ history });
-      const lastMessage = messages[messages.length - 1].content;
-
-      result = await chat.sendMessage(lastMessage);
-      response = await result.response;
-    }
-
-    // ============================================
-    // CACHE CREATION/UPDATE (Step A or B.4)
-    // ============================================
-
-    // After getting response, create new cache with full conversation
-    if (messages.length >= 2) { // Only cache if there's actual history
-      try {
-        // Build full conversation history for caching
-        const fullConversationForCache: ChatMessage[] = [
-          { role: 'user', content: systemPrompt },
-          { role: 'assistant', content: `はい、分かりました。${jlptLevel}レベルで教えます！` },
-          ...messages,
-          { role: 'assistant', content: response.text() },
-        ];
-
-        const cacheMetadata = await createCachedContent(modelName, fullConversationForCache);
-
-        // Notify UI to save new cache ID
-        if (cachingOptions?.onCacheCreated) {
-          cachingOptions.onCacheCreated(cacheMetadata.cacheId, cacheMetadata.createdAt);
-        }
-
-        cachedTokens = cacheMetadata.cachedTokenCount;
-        console.log(`Japanese Learning cache created: ${cacheMetadata.cacheId} (${cachedTokens} tokens)`);
-      } catch (error) {
-        console.error('Failed to create Japanese Learning cache, continuing without caching:', error);
-        // Don't throw - caching is optional optimization
-      }
-    }
+    const result = await chat.sendMessage(lastMessage);
+    const response = await result.response;
 
     // ============================================
     // CREDIT DEDUCTION
@@ -784,6 +558,9 @@ For example, if the language is Vietnamese, write {{会話|かいわ|hội tho�
 
     const inputTokens = response.usageMetadata?.promptTokenCount || 0;
     const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
+
+    // Get cached token count from response metadata (implicit caching)
+    cachedTokens = response.usageMetadata?.cachedContentTokenCount || 0;
 
     await deductCreditsWithCallback(
       userId,
@@ -794,10 +571,7 @@ For example, if the language is Vietnamese, write {{会話|かいわ|hội tho�
       modelTier,
       'text',
       groundingOptions,
-      {
-        ...cachingOptions,
-        cacheId: useCachedContent ? cachingOptions?.cacheId : undefined,
-      },
+      undefined, // No explicit cache management
       onTokenUsage,
       cachedTokens // Pass cached token count for pricing
     );
