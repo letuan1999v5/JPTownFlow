@@ -361,15 +361,22 @@ exports.geminiChat = functions.https.onRequest((request, response) => {
                     ];
                     // Count tokens for cache creation
                     const cacheTokenCount = await countMessageTokens(genAI, modelName, fullConversation);
-                    // Check if cache creation is too large (warning only, not blocking)
-                    if (cacheTokenCount > config.cacheCreationWarningThreshold) {
-                        warnings.push(`⚠️ Large cache creation: ${cacheTokenCount.toLocaleString()} tokens (threshold: ${config.cacheCreationWarningThreshold.toLocaleString()}). This may consume significant credits.`);
+                    // Gemini API requires minimum 32K tokens for caching
+                    const MINIMUM_CACHE_TOKENS = 32768;
+                    if (cacheTokenCount < MINIMUM_CACHE_TOKENS) {
+                        console.log(`Conversation too short for caching: ${cacheTokenCount} tokens (minimum: ${MINIMUM_CACHE_TOKENS}). Cache will be created when conversation is longer.`);
                     }
-                    const cacheMetadata = await createCachedContent(cacheManager, modelName, fullConversation);
-                    newCacheId = cacheMetadata.cacheId;
-                    newCacheCreatedAt = cacheMetadata.createdAt;
-                    cachedTokens = cacheMetadata.cachedTokenCount;
-                    console.log(`Cache created: ${newCacheId} (${cachedTokens} tokens)`);
+                    else {
+                        // Check if cache creation is too large (warning only, not blocking)
+                        if (cacheTokenCount > config.cacheCreationWarningThreshold) {
+                            warnings.push(`⚠️ Large cache creation: ${cacheTokenCount.toLocaleString()} tokens (threshold: ${config.cacheCreationWarningThreshold.toLocaleString()}). This may consume significant credits.`);
+                        }
+                        const cacheMetadata = await createCachedContent(cacheManager, modelName, fullConversation);
+                        newCacheId = cacheMetadata.cacheId;
+                        newCacheCreatedAt = cacheMetadata.createdAt;
+                        cachedTokens = cacheMetadata.cachedTokenCount;
+                        console.log(`Cache created: ${newCacheId} (${cachedTokens} tokens)`);
+                    }
                 }
                 catch (error) {
                     console.error('Failed to create cache:', error);
