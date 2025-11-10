@@ -253,11 +253,33 @@ export default function AIChatScreen() {
 
       // Token usage callback for super admin
       const onTokenUsage = isSuperAdmin ? (usage: TokenUsage) => {
-        Alert.alert(
-          '🔧 Token Usage (Super Admin)',
-          `Prompt: ${usage.promptTokens}\nCompletion: ${usage.completionTokens}\nTotal: ${usage.totalTokens}`,
-          [{ text: 'OK' }]
-        );
+        if (usage.breakdown) {
+          // Show detailed breakdown
+          const breakdown = usage.breakdown;
+          const message = `📊 MODEL: ${breakdown.modelTier.toUpperCase()} (${breakdown.promptSizeTier} prompt)\n\n` +
+            `💰 COST BREAKDOWN:\n` +
+            `• Input: ${breakdown.inputTokens.toLocaleString()} tokens × $${breakdown.inputPricePerMillion}/1M = $${breakdown.inputCostUSD.toFixed(6)}\n` +
+            `• Output: ${breakdown.outputTokens.toLocaleString()} tokens × $${breakdown.outputPricePerMillion}/1M = $${breakdown.outputCostUSD.toFixed(6)}\n` +
+            (breakdown.cachingCostUSD > 0 ? `• Cache: ${breakdown.cachedTokens.toLocaleString()} tokens × $${breakdown.cachingPricePerMillion}/1M = $${breakdown.cachingCostUSD.toFixed(6)}\n` : '') +
+            (breakdown.groundingDetails?.googleSearch ? `• Google Search: $${breakdown.groundingCostUSD.toFixed(6)}\n` : '') +
+            (breakdown.groundingDetails?.googleMaps ? `• Google Maps: $${breakdown.groundingCostUSD.toFixed(6)}\n` : '') +
+            `\n📈 TOTAL: $${breakdown.totalCostUSD.toFixed(6)}\n` +
+            `× ${breakdown.profitMargin}x margin = ${breakdown.finalCredits} credits\n\n` +
+            `💳 Credits deducted: ${breakdown.finalCredits}`;
+
+          Alert.alert(
+            '🔧 Credit Calculation (Super Admin)',
+            message,
+            [{ text: 'OK' }]
+          );
+        } else {
+          // Fallback to simple display
+          Alert.alert(
+            '🔧 Token Usage (Super Admin)',
+            `Prompt: ${usage.promptTokens}\nCompletion: ${usage.completionTokens}\nTotal: ${usage.totalTokens}`,
+            [{ text: 'OK' }]
+          );
+        }
       } : undefined;
 
       const response = await chatWithAI(

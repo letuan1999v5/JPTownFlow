@@ -1,7 +1,7 @@
 // services/geminiService.ts
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { AIModelTier, GEMINI_MODELS, canUseModel, InputType } from '../types/credits';
+import { AIModelTier, GEMINI_MODELS, canUseModel, InputType, CreditBreakdown } from '../types/credits';
 import { deductCredits, checkAndResetCredits } from './creditsService';
 
 // Grounding options
@@ -20,14 +20,15 @@ export interface CachingOptions {
 const API_KEY = process.env.EXPO_PUBLIC_GOOGLE_AI_API_KEY || '';
 const genAI = new GoogleGenerativeAI(API_KEY);
 
-// Token usage metadata interface
+// Token usage metadata interface with optional detailed breakdown
 export interface TokenUsage {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  breakdown?: CreditBreakdown; // Optional detailed credit breakdown (for super admin)
 }
 
-// Optional callback for token usage tracking (for super admin)
+// Callback for usage tracking
 export type TokenUsageCallback = (usage: TokenUsage) => void;
 
 // Credit check result
@@ -35,6 +36,63 @@ export interface CreditCheckResult {
   canProceed: boolean;
   message?: string;
   remainingCredits?: number;
+}
+
+// Helper function to handle credit deduction with optional breakdown
+async function deductCreditsWithCallback(
+  userId: string,
+  isSuperAdmin: boolean,
+  inputTokens: number,
+  outputTokens: number,
+  feature: string,
+  modelTier: AIModelTier,
+  inputType: InputType,
+  groundingOptions?: GroundingOptions,
+  cachingOptions?: CachingOptions,
+  onTokenUsage?: TokenUsageCallback
+): Promise<void> {
+  if (!isSuperAdmin) {
+    const deductResult = await deductCredits(
+      userId,
+      inputTokens,
+      outputTokens,
+      feature,
+      modelTier,
+      {
+        inputType,
+        useGroundingSearch: groundingOptions?.useGoogleSearch,
+        useGroundingMaps: groundingOptions?.useGoogleMaps,
+        useCaching: !!cachingOptions?.cacheId,
+        cachedTokens: 0, // TODO: Get actual cached tokens from cache metadata
+      },
+      !!onTokenUsage // Request breakdown if callback is provided
+    );
+
+    if (!deductResult.success) {
+      throw new Error(deductResult.message || 'Failed to deduct credits');
+    }
+
+    // Track credit breakdown if callback provided
+    if (onTokenUsage && deductResult.breakdown) {
+      const usage: TokenUsage = {
+        promptTokens: inputTokens,
+        completionTokens: outputTokens,
+        totalTokens: inputTokens + outputTokens,
+        breakdown: deductResult.breakdown,
+      };
+      onTokenUsage(usage);
+    }
+  } else {
+    // For super admin, still call callback with token usage (no breakdown needed)
+    if (onTokenUsage) {
+      const usage: TokenUsage = {
+        promptTokens: inputTokens,
+        completionTokens: outputTokens,
+        totalTokens: inputTokens + outputTokens,
+      };
+      onTokenUsage(usage);
+    }
+  }
 }
 
 // Map language codes to full language names for better AI understanding
@@ -183,39 +241,22 @@ Respond in JSON format:
     const response = await result.response;
     const text = response.text();
 
-    // Get token usage
-    const tokenUsage: TokenUsage = {
-      promptTokens: response.usageMetadata?.promptTokenCount || 0,
-      completionTokens: response.usageMetadata?.candidatesTokenCount || 0,
-      totalTokens: response.usageMetadata?.totalTokenCount || 0,
-    };
+    // Deduct credits and track usage
+    const inputTokens = response.usageMetadata?.promptTokenCount || 0;
+    const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
 
-    // Deduct credits (unless super admin)
-    if (!isSuperAdmin) {
-      const deductResult = await deductCredits(
-        userId,
-        tokenUsage.promptTokens,
-        tokenUsage.completionTokens,
-        'garbage_analysis',
-        modelTier,
-        {
-          inputType: 'image',
-          useGroundingSearch: groundingOptions?.useGoogleSearch,
-          useGroundingMaps: groundingOptions?.useGoogleMaps,
-          useCaching: !!cachingOptions?.cacheId,
-          cachedTokens: 0, // TODO: Get actual cached tokens from cache metadata
-        }
-      );
-
-      if (!deductResult.success) {
-        throw new Error(deductResult.message || 'Failed to deduct credits');
-      }
-    }
-
-    // Track token usage if callback provided
-    if (onTokenUsage) {
-      onTokenUsage(tokenUsage);
-    }
+    await deductCreditsWithCallback(
+      userId,
+      isSuperAdmin,
+      inputTokens,
+      outputTokens,
+      'garbage_analysis',
+      modelTier,
+      'image',
+      groundingOptions,
+      cachingOptions,
+      onTokenUsage
+    );
 
     // Parse JSON response
     // Remove markdown code blocks if present
@@ -307,39 +348,22 @@ export async function chatWithAI(
     const result = await chat.sendMessage(lastMessage);
     const response = await result.response;
 
-    // Get token usage
-    const tokenUsage: TokenUsage = {
-      promptTokens: response.usageMetadata?.promptTokenCount || 0,
-      completionTokens: response.usageMetadata?.candidatesTokenCount || 0,
-      totalTokens: response.usageMetadata?.totalTokenCount || 0,
-    };
+    // Deduct credits and track usage
+    const inputTokens = response.usageMetadata?.promptTokenCount || 0;
+    const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
 
-    // Deduct credits (unless super admin)
-    if (!isSuperAdmin) {
-      const deductResult = await deductCredits(
-        userId,
-        tokenUsage.promptTokens,
-        tokenUsage.completionTokens,
-        'ai_chat',
-        modelTier,
-        {
-          inputType: 'text',
-          useGroundingSearch: groundingOptions?.useGoogleSearch,
-          useGroundingMaps: groundingOptions?.useGoogleMaps,
-          useCaching: !!cachingOptions?.cacheId,
-          cachedTokens: 0, // TODO: Get actual cached tokens from cache metadata
-        }
-      );
-
-      if (!deductResult.success) {
-        throw new Error(deductResult.message || 'Failed to deduct credits');
-      }
-    }
-
-    // Track token usage if callback provided
-    if (onTokenUsage) {
-      onTokenUsage(tokenUsage);
-    }
+    await deductCreditsWithCallback(
+      userId,
+      isSuperAdmin,
+      inputTokens,
+      outputTokens,
+      'ai_chat',
+      modelTier,
+      'text',
+      groundingOptions,
+      cachingOptions,
+      onTokenUsage
+    );
 
     return response.text();
   } catch (error) {
@@ -450,39 +474,22 @@ For example, if the language is Vietnamese, write {{会話|かいわ|hội tho�
     const result = await chat.sendMessage(lastMessage);
     const response = await result.response;
 
-    // Get token usage
-    const tokenUsage: TokenUsage = {
-      promptTokens: response.usageMetadata?.promptTokenCount || 0,
-      completionTokens: response.usageMetadata?.candidatesTokenCount || 0,
-      totalTokens: response.usageMetadata?.totalTokenCount || 0,
-    };
+    // Deduct credits and track usage
+    const inputTokens = response.usageMetadata?.promptTokenCount || 0;
+    const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
 
-    // Deduct credits (unless super admin)
-    if (!isSuperAdmin) {
-      const deductResult = await deductCredits(
-        userId,
-        tokenUsage.promptTokens,
-        tokenUsage.completionTokens,
-        'japanese_learning',
-        modelTier,
-        {
-          inputType: 'text',
-          useGroundingSearch: groundingOptions?.useGoogleSearch,
-          useGroundingMaps: groundingOptions?.useGoogleMaps,
-          useCaching: !!cachingOptions?.cacheId,
-          cachedTokens: 0, // TODO: Get actual cached tokens from cache metadata
-        }
-      );
-
-      if (!deductResult.success) {
-        throw new Error(deductResult.message || 'Failed to deduct credits');
-      }
-    }
-
-    // Track token usage if callback provided
-    if (onTokenUsage) {
-      onTokenUsage(tokenUsage);
-    }
+    await deductCreditsWithCallback(
+      userId,
+      isSuperAdmin,
+      inputTokens,
+      outputTokens,
+      'japanese_learning',
+      modelTier,
+      'text',
+      groundingOptions,
+      cachingOptions,
+      onTokenUsage
+    );
 
     return response.text();
   } catch (error) {
@@ -545,39 +552,22 @@ ${htmlContent.substring(0, 10000)}...`; // Limit content to avoid token limits
     const result = await model.generateContent(prompt);
     const response = await result.response;
 
-    // Get token usage
-    const tokenUsage: TokenUsage = {
-      promptTokens: response.usageMetadata?.promptTokenCount || 0,
-      completionTokens: response.usageMetadata?.candidatesTokenCount || 0,
-      totalTokens: response.usageMetadata?.totalTokenCount || 0,
-    };
+    // Deduct credits and track usage
+    const inputTokens = response.usageMetadata?.promptTokenCount || 0;
+    const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
 
-    // Deduct credits (unless super admin)
-    if (!isSuperAdmin) {
-      const deductResult = await deductCredits(
-        userId,
-        tokenUsage.promptTokens,
-        tokenUsage.completionTokens,
-        'web_summary',
-        modelTier,
-        {
-          inputType: 'text',
-          useGroundingSearch: groundingOptions?.useGoogleSearch,
-          useGroundingMaps: groundingOptions?.useGoogleMaps,
-          useCaching: !!cachingOptions?.cacheId,
-          cachedTokens: 0, // TODO: Get actual cached tokens from cache metadata
-        }
-      );
-
-      if (!deductResult.success) {
-        throw new Error(deductResult.message || 'Failed to deduct credits');
-      }
-    }
-
-    // Track token usage if callback provided
-    if (onTokenUsage) {
-      onTokenUsage(tokenUsage);
-    }
+    await deductCreditsWithCallback(
+      userId,
+      isSuperAdmin,
+      inputTokens,
+      outputTokens,
+      'web_summary',
+      modelTier,
+      'text',
+      groundingOptions,
+      cachingOptions,
+      onTokenUsage
+    );
 
     return response.text();
   } catch (error) {
@@ -657,39 +647,22 @@ Remember: Respond in the SAME LANGUAGE as the question above.`;
     const result = await model.generateContent(prompt);
     const response = await result.response;
 
-    // Get token usage
-    const tokenUsage: TokenUsage = {
-      promptTokens: response.usageMetadata?.promptTokenCount || 0,
-      completionTokens: response.usageMetadata?.candidatesTokenCount || 0,
-      totalTokens: response.usageMetadata?.totalTokenCount || 0,
-    };
+    // Deduct credits and track usage
+    const inputTokens = response.usageMetadata?.promptTokenCount || 0;
+    const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
 
-    // Deduct credits (unless super admin)
-    if (!isSuperAdmin) {
-      const deductResult = await deductCredits(
-        userId,
-        tokenUsage.promptTokens,
-        tokenUsage.completionTokens,
-        'web_qa',
-        modelTier,
-        {
-          inputType: 'text',
-          useGroundingSearch: groundingOptions?.useGoogleSearch,
-          useGroundingMaps: groundingOptions?.useGoogleMaps,
-          useCaching: !!cachingOptions?.cacheId,
-          cachedTokens: 0, // TODO: Get actual cached tokens from cache metadata
-        }
-      );
-
-      if (!deductResult.success) {
-        throw new Error(deductResult.message || 'Failed to deduct credits');
-      }
-    }
-
-    // Track token usage if callback provided
-    if (onTokenUsage) {
-      onTokenUsage(tokenUsage);
-    }
+    await deductCreditsWithCallback(
+      userId,
+      isSuperAdmin,
+      inputTokens,
+      outputTokens,
+      'web_qa',
+      modelTier,
+      'text',
+      groundingOptions,
+      cachingOptions,
+      onTokenUsage
+    );
 
     return response.text();
   } catch (error) {
@@ -785,39 +758,22 @@ Now analyze the text and provide your response:`;
     const result = await model.generateContent(prompt);
     const response = await result.response;
 
-    // Get token usage
-    const tokenUsage: TokenUsage = {
-      promptTokens: response.usageMetadata?.promptTokenCount || 0,
-      completionTokens: response.usageMetadata?.candidatesTokenCount || 0,
-      totalTokens: response.usageMetadata?.totalTokenCount || 0,
-    };
+    // Deduct credits and track usage
+    const inputTokens = response.usageMetadata?.promptTokenCount || 0;
+    const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
 
-    // Deduct credits (unless super admin)
-    if (!isSuperAdmin) {
-      const deductResult = await deductCredits(
-        userId,
-        tokenUsage.promptTokens,
-        tokenUsage.completionTokens,
-        'japanese_translation',
-        modelTier,
-        {
-          inputType: 'text',
-          useGroundingSearch: groundingOptions?.useGoogleSearch,
-          useGroundingMaps: groundingOptions?.useGoogleMaps,
-          useCaching: !!cachingOptions?.cacheId,
-          cachedTokens: 0, // TODO: Get actual cached tokens from cache metadata
-        }
-      );
-
-      if (!deductResult.success) {
-        throw new Error(deductResult.message || 'Failed to deduct credits');
-      }
-    }
-
-    // Track token usage if callback provided
-    if (onTokenUsage) {
-      onTokenUsage(tokenUsage);
-    }
+    await deductCreditsWithCallback(
+      userId,
+      isSuperAdmin,
+      inputTokens,
+      outputTokens,
+      'japanese_translation',
+      modelTier,
+      'text',
+      groundingOptions,
+      cachingOptions,
+      onTokenUsage
+    );
 
     return response.text();
   } catch (error) {
