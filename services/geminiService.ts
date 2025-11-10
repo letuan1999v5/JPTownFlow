@@ -25,6 +25,11 @@ export interface CachingOptions {
 const CLOUD_FUNCTION_URL = process.env.EXPO_PUBLIC_GEMINI_CLOUD_FUNCTION_URL || '';
 const USE_CLOUD_FUNCTION = Boolean(CLOUD_FUNCTION_URL);
 
+// Debug: Log configuration on module load
+console.log('🔧 [Gemini Service] Cloud Function URL:', CLOUD_FUNCTION_URL ? '✅ Configured' : '❌ Not configured');
+console.log('🔧 [Gemini Service] USE_CLOUD_FUNCTION:', USE_CLOUD_FUNCTION);
+console.log('🔧 [Gemini Service] Full URL:', CLOUD_FUNCTION_URL);
+
 // Initialize Gemini AI (fallback for direct API calls)
 const API_KEY = process.env.EXPO_PUBLIC_GOOGLE_AI_API_KEY || '';
 const genAI = new GoogleGenerativeAI(API_KEY);
