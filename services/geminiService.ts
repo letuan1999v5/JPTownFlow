@@ -1,6 +1,7 @@
 // services/geminiService.ts
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleAICacheManager } from '@google/generative-ai/server';
 import { AIModelTier, GEMINI_MODELS, canUseModel, InputType, CreditBreakdown } from '../types/credits';
 import { deductCredits, checkAndResetCredits } from './creditsService';
 
@@ -32,6 +33,7 @@ const CACHE_RENEWAL_THRESHOLD_MINUTES = 55; // Renew if older than this
 // Initialize Gemini AI
 const API_KEY = process.env.EXPO_PUBLIC_GOOGLE_AI_API_KEY || '';
 const genAI = new GoogleGenerativeAI(API_KEY);
+const cacheManager = new GoogleAICacheManager(API_KEY);
 
 // Token usage metadata interface with optional detailed breakdown
 export interface TokenUsage {
@@ -112,35 +114,33 @@ async function deductCreditsWithCallback(
 /**
  * Create a new cached content for conversation history
  * @returns Cache ID and metadata
+ *
+ * Note: Google requires minimum 32,769 tokens. If conversation is too short,
+ * API will throw error which is handled gracefully by caller.
  */
 async function createCachedContent(
   modelName: string,
   conversationHistory: ChatMessage[]
 ): Promise<CacheMetadata> {
-  try {
-    // Build contents array for caching
-    const contents = conversationHistory.map(msg => ({
-      role: msg.role === 'user' ? 'user' : 'model',
-      parts: [{ text: msg.content }],
-    }));
+  // Build contents array for caching
+  const contents = conversationHistory.map(msg => ({
+    role: msg.role === 'user' ? 'user' : 'model',
+    parts: [{ text: msg.content }],
+  }));
 
-    // Create cache using Google's caching API
-    // Note: This requires @google/generative-ai SDK with cache support
-    const cacheResult = await genAI.cacheManager.create({
-      model: modelName,
-      contents: contents,
-      ttl: CACHE_TTL_MINUTES * 60, // Convert to seconds
-    });
+  // Create cache using Google's caching API
+  // Let Google API validate token count - it will throw error if < 32,769 tokens
+  const cacheResult = await cacheManager.create({
+    model: modelName,
+    contents: contents,
+    ttl: CACHE_TTL_MINUTES * 60, // Convert to seconds
+  });
 
-    return {
-      cacheId: cacheResult.name, // e.g., "cachedContents/xyz-123"
-      createdAt: new Date(),
-      cachedTokenCount: cacheResult.usageMetadata?.totalTokenCount || 0,
-    };
-  } catch (error) {
-    console.error('Failed to create cache:', error);
-    throw new Error('Failed to create conversation cache');
-  }
+  return {
+    cacheId: cacheResult.name, // e.g., "cachedContents/xyz-123"
+    createdAt: new Date(),
+    cachedTokenCount: cacheResult.usageMetadata?.totalTokenCount || 0,
+  };
 }
 
 /**
@@ -150,7 +150,7 @@ async function createCachedContent(
 async function renewCacheTTL(cacheId: string): Promise<Date> {
   try {
     // Update cache TTL using Google's caching API
-    await genAI.cacheManager.update(cacheId, {
+    await cacheManager.update(cacheId, {
       ttl: CACHE_TTL_MINUTES * 60, // Reset to 60 minutes
     });
 
