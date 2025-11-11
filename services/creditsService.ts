@@ -1,4 +1,6 @@
 // services/creditsService.ts
+// LEGACY: This service maintains backward compatibility with old credit system
+// New code should use newCreditService.ts instead
 
 import {
   collection,
@@ -29,6 +31,8 @@ import {
   CreditBreakdown,
   AIModelTier,
 } from '../types/credits';
+import { deductCredits as newDeductCredits } from './newCreditService';
+import { UserCredits } from '../types/newCredits';
 
 // Minimum credit balance allowed (negative) by tier
 export const MINIMUM_CREDIT_BALANCE: Record<string, number> = {
@@ -258,8 +262,8 @@ export async function checkAndResetCredits(
 
 /**
  * Deduct credits from user balance
- * Credits are deducted in this order: monthly → carryover → extra
- * Allows negative balance based on subscription tier
+ * COMPATIBILITY WRAPPER: Uses new credit system internally
+ * New code should use newCreditService.deductCredits() directly
  */
 export async function deductCredits(
   userId: string,
@@ -276,7 +280,7 @@ export async function deductCredits(
   message?: string;
   breakdown?: CreditBreakdown;
 }> {
-  // Calculate credits using new function with options
+  // Calculate credits using legacy calculation
   let creditsNeeded: number;
   let breakdown: CreditBreakdown | undefined;
 
@@ -295,118 +299,22 @@ export async function deductCredits(
       : tokensToCredits(inputTokens, outputTokens, modelTier);
   }
 
-  return await runTransaction(db, async (transaction) => {
-    const docRef = doc(db, CREDITS_COLLECTION, userId);
-    const docSnap = await transaction.get(docRef);
+  // Use new credit system
+  const result = await newDeductCredits(
+    userId,
+    creditsNeeded,
+    `${feature} (${modelTier})`,
+    feature
+  );
 
-    if (!docSnap.exists()) {
-      return {
-        success: false,
-        remainingCredits: 0,
-        creditsDeducted: 0,
-        message: 'Credit balance not found',
-      };
-    }
-
-    const currentBalance = docSnap.data() as any;
-    const now = new Date();
-    const userTier = currentBalance.tier || 'FREE';
-
-    // Check if carryover credits have expired
-    if (
-      currentBalance.carryoverExpiryDate &&
-      currentBalance.carryoverExpiryDate.toDate() < now
-    ) {
-      currentBalance.carryoverCredits = 0;
-      currentBalance.carryoverExpiryDate = null;
-    }
-
-    const totalAvailable =
-      (currentBalance.monthlyCredits || 0) +
-      (currentBalance.carryoverCredits || 0) +
-      (currentBalance.extraCredits || 0);
-
-    // Get minimum allowed balance for this tier
-    const minBalance = MINIMUM_CREDIT_BALANCE[userTier] ?? 0;
-
-    // Calculate what the balance would be after deduction
-    const balanceAfterDeduction = totalAvailable - creditsNeeded;
-
-    // Check if deduction would exceed minimum allowed balance
-    if (balanceAfterDeduction < minBalance) {
-      return {
-        success: false,
-        remainingCredits: totalAvailable,
-        creditsDeducted: 0,
-        message: `Insufficient credits. You need ${creditsNeeded} credits but only have ${totalAvailable} available (minimum allowed: ${minBalance})`,
-      };
-    }
-
-    // Deduct credits in order: monthly → carryover → extra (allowing negative for monthly)
-    let remaining = creditsNeeded;
-    let newMonthly = currentBalance.monthlyCredits || 0;
-    let newCarryover = currentBalance.carryoverCredits || 0;
-    let newExtra = currentBalance.extraCredits || 0;
-
-    // 1. Deduct from monthly first (can go negative)
-    if (remaining > 0) {
-      const deduction = Math.min(remaining, newMonthly);
-      newMonthly -= deduction;
-      remaining -= deduction;
-    }
-
-    // 2. Then from carryover (cannot go negative)
-    if (remaining > 0 && newCarryover > 0) {
-      const deduction = Math.min(remaining, newCarryover);
-      newCarryover -= deduction;
-      remaining -= deduction;
-    }
-
-    // 3. Then from extra (cannot go negative)
-    if (remaining > 0 && newExtra > 0) {
-      const deduction = Math.min(remaining, newExtra);
-      newExtra -= deduction;
-      remaining -= deduction;
-    }
-
-    // 4. If still remaining, deduct from monthly (allowing it to go negative)
-    if (remaining > 0) {
-      newMonthly -= remaining;
-      remaining = 0;
-    }
-
-    // Update balance
-    const updatedBalance = {
-      monthlyCredits: newMonthly,
-      carryoverCredits: newCarryover,
-      extraCredits: newExtra,
-      updatedAt: Timestamp.fromDate(now),
-    };
-
-    transaction.update(docRef, updatedBalance);
-
-    // Log transaction
-    await logTransaction({
-      userId,
-      type: 'deduction',
-      amount: -creditsNeeded,
-      feature,
-      modelTier,
-      tokensUsed: inputTokens + outputTokens,
-      remainingMonthly: newMonthly,
-      remainingCarryover: newCarryover,
-      remainingExtra: newExtra,
-      description: `Used ${creditsNeeded} credits for ${feature} (${modelTier} model, ${inputTokens} in + ${outputTokens} out)`,
-      timestamp: now,
-    });
-
-    return {
-      success: true,
-      remainingCredits: newMonthly + newCarryover + newExtra,
-      creditsDeducted: creditsNeeded,
-      breakdown: returnBreakdown ? breakdown : undefined,
-    };
-  });
+  // Map new result to old interface
+  return {
+    success: result.success,
+    remainingCredits: result.balanceAfter.total,
+    creditsDeducted: creditsNeeded,
+    message: result.message,
+    breakdown,
+  };
 }
 
 /**
