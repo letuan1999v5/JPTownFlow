@@ -1,230 +1,402 @@
 // services/subscriptionService.ts
+// Subscription management with new credit system integration
 
-import { doc, getDoc, setDoc, runTransaction } from 'firebase/firestore';
+import {
+  doc,
+  getDoc,
+  updateDoc,
+  Timestamp,
+} from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig';
-import { UserSubscription, SubscriptionTier } from '../types/subscription';
-import { CreditBalance } from '../types/credits';
-import { CREDIT_ALLOCATIONS } from '../types/credits';
+import {
+  SubscriptionTier,
+  SUBSCRIPTION_PRICES,
+  MONTHLY_CREDITS,
+  CREDIT_EXTRAS,
+  UserCredits,
+} from '../types/newCredits';
+import { canMakePurchase } from './antifraudService';
+import { grantMonthlyCredits, grantPurchaseCredits } from './newCreditService';
 
 /**
- * Check if subscription has expired and needs transition to pending tier
+ * Upgrade user to PRO subscription
+ * Grants 3,000 monthly credits
+ * Preserves existing trial and purchase credits
  */
-export async function checkAndTransitionSubscription(userId: string): Promise<void> {
-  const subscriptionRef = doc(db, 'subscriptions', userId);
-  const subscriptionSnap = await getDoc(subscriptionRef);
-
-  if (!subscriptionSnap.exists()) return;
-
-  const data = subscriptionSnap.data();
-  const subscription: UserSubscription = {
-    tier: data.tier,
-    startDate: data.startDate?.toDate() || null,
-    endDate: data.endDate?.toDate() || null,
-    pendingTier: data.pendingTier,
-    pendingStartDate: data.pendingStartDate?.toDate(),
-  };
-
-  // Check if current tier has expired and there's a pending tier
-  if (subscription.endDate && subscription.pendingTier) {
-    const now = new Date();
-    if (now >= subscription.endDate) {
-      // Transition to pending tier
-      await runTransaction(db, async (transaction) => {
-        // Update subscription
-        transaction.update(subscriptionRef, {
-          tier: subscription.pendingTier,
-          startDate: subscription.endDate, // Start date is the old end date
-          endDate: calculateEndDate(subscription.pendingTier!, subscription.endDate!),
-          pendingTier: null,
-          pendingStartDate: null,
-        });
-
-        // Reset credits to new tier allocation
-        const creditRef = doc(db, 'credits', userId);
-        const allocation = CREDIT_ALLOCATIONS[subscription.pendingTier!];
-
-        transaction.update(creditRef, {
-          monthlyCredits: allocation.amount,
-          carryoverCredits: 0, // Clear carryover on downgrade
-          lastResetDate: new Date(),
-          tier: subscription.pendingTier,
-        });
-      });
+export async function upgradeToProSubscription(
+  userId: string,
+  deviceId: string
+): Promise<{
+  success: boolean;
+  message: string;
+  error?: string;
+}> {
+  try {
+    // Check anti-fraud status
+    const purchaseCheck = await canMakePurchase(userId, deviceId);
+    if (!purchaseCheck.allowed) {
+      return {
+        success: false,
+        message: 'Purchase blocked',
+        error: purchaseCheck.reason,
+      };
     }
-  }
-}
 
-/**
- * Calculate end date based on subscription tier
- */
-function calculateEndDate(tier: SubscriptionTier, startDate: Date): Date {
-  if (tier === 'FREE') {
-    return new Date(startDate.getTime() + 365 * 24 * 60 * 60 * 1000); // 1 year for free (essentially unlimited)
-  }
+    // Get user data
+    const userDoc = await getDoc(doc(db, 'users', userId));
+    if (!userDoc.exists()) {
+      return {
+        success: false,
+        message: 'User not found',
+      };
+    }
 
-  // For paid tiers, 30 days
-  return new Date(startDate.getTime() + 30 * 24 * 60 * 60 * 1000);
-}
+    const userData = userDoc.data();
+    const currentTier = userData.credits?.monthly?.subscriptionTier || 'FREE';
 
-/**
- * Upgrade subscription (immediate effect, credits are added)
- */
-export async function upgradeSubscription(
-  userId: string,
-  newTier: SubscriptionTier
-): Promise<{ success: boolean; message: string }> {
-  try {
-    await runTransaction(db, async (transaction) => {
-      const subscriptionRef = doc(db, 'subscriptions', userId);
-      const creditRef = doc(db, 'credits', userId);
+    // Check if already PRO or higher
+    if (currentTier === 'PRO') {
+      return {
+        success: false,
+        message: 'Already subscribed to PRO',
+      };
+    }
 
-      const subscriptionSnap = await transaction.get(subscriptionRef);
-      const creditSnap = await transaction.get(creditRef);
+    if (currentTier === 'ULTRA') {
+      return {
+        success: false,
+        message: 'Cannot downgrade from ULTRA to PRO. Please cancel ULTRA first.',
+      };
+    }
 
-      if (!subscriptionSnap.exists()) {
-        throw new Error('Subscription not found');
-      }
+    // Update subscription tier
+    const now = Timestamp.now();
+    const nextResetDate = new Timestamp(
+      now.seconds + 30 * 24 * 60 * 60, // +30 days
+      now.nanoseconds
+    );
 
-      const currentSubscription = subscriptionSnap.data();
-      const currentTier = currentSubscription.tier;
-
-      // Verify it's an upgrade
-      const tierRanking = { FREE: 0, PRO: 1, ULTRA: 2 };
-      if (tierRanking[newTier] <= tierRanking[currentTier]) {
-        throw new Error('Not an upgrade');
-      }
-
-      const now = new Date();
-      const newEndDate = calculateEndDate(newTier, now);
-
-      // Update subscription immediately
-      transaction.update(subscriptionRef, {
-        tier: newTier,
-        startDate: now,
-        endDate: newEndDate,
-        pendingTier: null, // Clear any pending downgrade
-        pendingStartDate: null,
-      });
-
-      // Add credits from new tier allocation
-      if (creditSnap.exists()) {
-        const currentCredits = creditSnap.data() as CreditBalance;
-        const newAllocation = CREDIT_ALLOCATIONS[newTier];
-
-        // Keep existing credits and add new allocation
-        transaction.update(creditRef, {
-          monthlyCredits: currentCredits.monthlyCredits + newAllocation.amount,
-          tier: newTier,
-          lastResetDate: now,
-        });
-      }
+    await updateDoc(doc(db, 'users', userId), {
+      'credits.monthly.subscriptionTier': 'PRO',
+      'credits.monthly.resetAt': nextResetDate,
     });
 
-    return { success: true, message: 'Subscription upgraded successfully' };
-  } catch (error: any) {
-    console.error('Error upgrading subscription:', error);
-    return { success: false, message: error.message || 'Failed to upgrade subscription' };
-  }
-}
+    // Grant monthly credits
+    await grantMonthlyCredits(userId, 'PRO');
 
-/**
- * Downgrade subscription (scheduled for end of current period, current tier stays active)
- */
-export async function downgradeSubscription(
-  userId: string,
-  newTier: SubscriptionTier
-): Promise<{ success: boolean; message: string }> {
-  try {
-    await runTransaction(db, async (transaction) => {
-      const subscriptionRef = doc(db, 'subscriptions', userId);
-      const subscriptionSnap = await transaction.get(subscriptionRef);
-
-      if (!subscriptionSnap.exists()) {
-        throw new Error('Subscription not found');
-      }
-
-      const currentSubscription = subscriptionSnap.data();
-      const currentTier = currentSubscription.tier;
-
-      // Verify it's a downgrade
-      const tierRanking = { FREE: 0, PRO: 1, ULTRA: 2 };
-      if (tierRanking[newTier] >= tierRanking[currentTier]) {
-        throw new Error('Not a downgrade');
-      }
-
-      const currentEndDate = currentSubscription.endDate?.toDate();
-      if (!currentEndDate) {
-        throw new Error('Current subscription has no end date');
-      }
-
-      // Schedule downgrade for end of current period
-      transaction.update(subscriptionRef, {
-        pendingTier: newTier,
-        pendingStartDate: currentEndDate,
-      });
-
-      // Note: Credits stay as is until transition happens
-    });
+    console.log(`User ${userId} upgraded to PRO subscription`);
 
     return {
       success: true,
-      message: 'Downgrade scheduled. Your current plan will remain active until the end of your billing period.'
+      message: `Successfully upgraded to PRO. You received ${MONTHLY_CREDITS.PRO} monthly credits.`,
     };
-  } catch (error: any) {
-    console.error('Error downgrading subscription:', error);
-    return { success: false, message: error.message || 'Failed to downgrade subscription' };
+  } catch (error) {
+    console.error('Error upgrading to PRO:', error);
+    return {
+      success: false,
+      message: 'Failed to upgrade subscription',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
   }
 }
 
 /**
- * Change subscription (handles both upgrade and downgrade)
+ * Upgrade user to ULTRA subscription
+ * Grants 10,000 monthly credits
+ * Preserves existing trial and purchase credits
  */
-export async function changeSubscription(
+export async function upgradeToUltraSubscription(
   userId: string,
-  newTier: SubscriptionTier
-): Promise<{ success: boolean; message: string }> {
-  // First check and transition if needed
-  await checkAndTransitionSubscription(userId);
+  deviceId: string
+): Promise<{
+  success: boolean;
+  message: string;
+  error?: string;
+}> {
+  try {
+    // Check anti-fraud status
+    const purchaseCheck = await canMakePurchase(userId, deviceId);
+    if (!purchaseCheck.allowed) {
+      return {
+        success: false,
+        message: 'Purchase blocked',
+        error: purchaseCheck.reason,
+      };
+    }
 
-  const subscriptionRef = doc(db, 'subscriptions', userId);
-  const subscriptionSnap = await getDoc(subscriptionRef);
+    // Get user data
+    const userDoc = await getDoc(doc(db, 'users', userId));
+    if (!userDoc.exists()) {
+      return {
+        success: false,
+        message: 'User not found',
+      };
+    }
 
-  if (!subscriptionSnap.exists()) {
-    return { success: false, message: 'Subscription not found' };
-  }
+    const userData = userDoc.data();
+    const currentTier = userData.credits?.monthly?.subscriptionTier || 'FREE';
 
-  const currentSubscription = subscriptionSnap.data();
-  const currentTier = currentSubscription.tier;
+    // Check if already ULTRA
+    if (currentTier === 'ULTRA') {
+      return {
+        success: false,
+        message: 'Already subscribed to ULTRA',
+      };
+    }
 
-  // Check if it's same tier
-  if (currentTier === newTier) {
-    return { success: false, message: 'Already on this tier' };
-  }
+    // Update subscription tier
+    const now = Timestamp.now();
+    const nextResetDate = new Timestamp(
+      now.seconds + 30 * 24 * 60 * 60, // +30 days
+      now.nanoseconds
+    );
 
-  const tierRanking = { FREE: 0, PRO: 1, ULTRA: 2 };
+    await updateDoc(doc(db, 'users', userId), {
+      'credits.monthly.subscriptionTier': 'ULTRA',
+      'credits.monthly.resetAt': nextResetDate,
+    });
 
-  if (tierRanking[newTier] > tierRanking[currentTier]) {
-    // Upgrade
-    return await upgradeSubscription(userId, newTier);
-  } else {
-    // Downgrade
-    return await downgradeSubscription(userId, newTier);
+    // Grant monthly credits (will replace any existing monthly credits)
+    await grantMonthlyCredits(userId, 'ULTRA');
+
+    console.log(`User ${userId} upgraded to ULTRA subscription`);
+
+    return {
+      success: true,
+      message: `Successfully upgraded to ULTRA. You received ${MONTHLY_CREDITS.ULTRA} monthly credits.`,
+    };
+  } catch (error) {
+    console.error('Error upgrading to ULTRA:', error);
+    return {
+      success: false,
+      message: 'Failed to upgrade subscription',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
   }
 }
 
 /**
- * Get active subscription tier (considering pending transitions)
+ * Purchase credit extra package
+ * Extra 1: 300 credits for 199 JPY
+ * Extra 2: 1,500 credits for 798 JPY
+ * Credits never expire
  */
-export function getActiveTier(subscription: UserSubscription | null): SubscriptionTier {
-  if (!subscription) return 'FREE';
-
-  // If there's an end date and we've passed it, and there's a pending tier
-  if (subscription.endDate && subscription.pendingTier) {
-    const now = new Date();
-    if (now >= subscription.endDate) {
-      return subscription.pendingTier;
+export async function purchaseCreditExtra(
+  userId: string,
+  packageType: 'EXTRA_1' | 'EXTRA_2',
+  deviceId: string
+): Promise<{
+  success: boolean;
+  message: string;
+  creditsGranted?: number;
+  error?: string;
+}> {
+  try {
+    // Check anti-fraud status
+    const purchaseCheck = await canMakePurchase(userId, deviceId);
+    if (!purchaseCheck.allowed) {
+      return {
+        success: false,
+        message: 'Purchase blocked',
+        error: purchaseCheck.reason,
+      };
     }
-  }
 
-  return subscription.tier;
+    // Get package details
+    const packageDetails = CREDIT_EXTRAS[packageType];
+    const creditsToGrant = packageDetails.credits;
+    const price = packageDetails.price;
+
+    // Grant purchase credits (never expire)
+    const grantResult = await grantPurchaseCredits(
+      userId,
+      creditsToGrant,
+      `Purchased ${packageType}: ${creditsToGrant} credits for ${price} JPY`
+    );
+
+    if (!grantResult.success) {
+      return {
+        success: false,
+        message: grantResult.message,
+        error: grantResult.error,
+      };
+    }
+
+    console.log(`User ${userId} purchased ${packageType}: ${creditsToGrant} credits`);
+
+    return {
+      success: true,
+      message: `Successfully purchased ${creditsToGrant} credits for ${price} JPY`,
+      creditsGranted: creditsToGrant,
+    };
+  } catch (error) {
+    console.error('Error purchasing credit extra:', error);
+    return {
+      success: false,
+      message: 'Failed to purchase credits',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+/**
+ * Handle monthly credit reset for subscriptions
+ * Called on subscription renewal date (every 30 days)
+ * Resets monthly credits to tier amount
+ * Does NOT affect trial or purchase credits
+ */
+export async function handleMonthlyReset(userId: string): Promise<{
+  success: boolean;
+  message: string;
+  newMonthlyCredits?: number;
+}> {
+  try {
+    const userDoc = await getDoc(doc(db, 'users', userId));
+    if (!userDoc.exists()) {
+      return {
+        success: false,
+        message: 'User not found',
+      };
+    }
+
+    const userData = userDoc.data();
+    const credits = userData.credits as UserCredits;
+    const tier = credits.monthly.subscriptionTier;
+
+    // Check if user has paid subscription
+    if (tier === 'FREE') {
+      return {
+        success: false,
+        message: 'FREE users do not have monthly credits',
+      };
+    }
+
+    // Check if reset is due
+    const now = Timestamp.now();
+    const resetAt = credits.monthly.resetAt;
+
+    if (resetAt && now.toMillis() < resetAt.toMillis()) {
+      return {
+        success: false,
+        message: 'Reset not due yet',
+      };
+    }
+
+    // Get new monthly credit amount based on tier
+    const newMonthlyAmount = MONTHLY_CREDITS[tier];
+
+    // Calculate next reset date (30 days from now)
+    const nextResetDate = new Timestamp(
+      now.seconds + 30 * 24 * 60 * 60,
+      now.nanoseconds
+    );
+
+    // Reset monthly credits
+    await updateDoc(doc(db, 'users', userId), {
+      'credits.monthly.amount': newMonthlyAmount,
+      'credits.monthly.resetAt': nextResetDate,
+      'credits.total': credits.trial.amount + newMonthlyAmount + credits.purchase.amount,
+    });
+
+    // Log transaction
+    await grantMonthlyCredits(userId, tier);
+
+    console.log(`Monthly reset for user ${userId}: ${newMonthlyAmount} credits (${tier})`);
+
+    return {
+      success: true,
+      message: `Monthly credits reset: ${newMonthlyAmount} credits`,
+      newMonthlyCredits: newMonthlyAmount,
+    };
+  } catch (error) {
+    console.error('Error handling monthly reset:', error);
+    return {
+      success: false,
+      message: 'Failed to reset monthly credits',
+    };
+  }
+}
+
+/**
+ * Downgrade/cancel subscription to FREE
+ * Monthly credits are lost immediately
+ * Trial and purchase credits are preserved
+ */
+export async function downgradeToFree(userId: string): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  try {
+    const userDoc = await getDoc(doc(db, 'users', userId));
+    if (!userDoc.exists()) {
+      return {
+        success: false,
+        message: 'User not found',
+      };
+    }
+
+    const userData = userDoc.data();
+    const credits = userData.credits as UserCredits;
+    const currentTier = credits.monthly.subscriptionTier;
+
+    if (currentTier === 'FREE') {
+      return {
+        success: false,
+        message: 'Already on FREE tier',
+      };
+    }
+
+    // Downgrade to FREE (lose monthly credits)
+    await updateDoc(doc(db, 'users', userId), {
+      'credits.monthly.subscriptionTier': 'FREE',
+      'credits.monthly.amount': 0,
+      'credits.monthly.resetAt': null,
+      'credits.total': credits.trial.amount + credits.purchase.amount,
+    });
+
+    console.log(`User ${userId} downgraded to FREE from ${currentTier}`);
+
+    return {
+      success: true,
+      message: 'Subscription cancelled. Monthly credits have been removed. Trial and purchased credits are preserved.',
+    };
+  } catch (error) {
+    console.error('Error downgrading to FREE:', error);
+    return {
+      success: false,
+      message: 'Failed to cancel subscription',
+    };
+  }
+}
+
+/**
+ * Get subscription info for user
+ */
+export async function getSubscriptionInfo(userId: string): Promise<{
+  tier: SubscriptionTier;
+  monthlyCredits: number;
+  nextResetDate: Date | null;
+  price: number;
+} | null> {
+  try {
+    const userDoc = await getDoc(doc(db, 'users', userId));
+    if (!userDoc.exists()) {
+      return null;
+    }
+
+    const userData = userDoc.data();
+    const credits = userData.credits as UserCredits;
+    const tier = credits.monthly.subscriptionTier;
+    const resetAt = credits.monthly.resetAt;
+
+    return {
+      tier,
+      monthlyCredits: MONTHLY_CREDITS[tier],
+      nextResetDate: resetAt ? resetAt.toDate() : null,
+      price: SUBSCRIPTION_PRICES[tier],
+    };
+  } catch (error) {
+    console.error('Error getting subscription info:', error);
+    return null;
+  }
 }
