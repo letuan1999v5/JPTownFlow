@@ -261,11 +261,11 @@ exports.geminiChat = functions.https.onRequest((request, response) => {
             // Initialize Gemini clients
             const { genAI, cacheManager } = getGeminiClients();
             // Model name mapping
-            // NOTE: Only stable models support context caching (not -exp models)
+            // Using Gemini 2.5 models - latest, best performance, full caching support
             const modelNames = {
-                lite: 'gemini-1.5-flash-8b', // Fast, cheap, supports caching
-                flash: 'gemini-1.5-flash', // Balanced, supports caching
-                pro: 'gemini-1.5-pro', // Most capable, supports caching
+                lite: 'gemini-2.5-flash-lite', // Fastest, cheapest, supports caching
+                flash: 'gemini-2.5-flash', // Balanced, supports caching
+                pro: 'gemini-2.5-pro', // Most capable, supports caching
             };
             const modelName = modelNames[modelTier] || modelNames.lite;
             let useCachedContent = false;
