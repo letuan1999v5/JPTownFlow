@@ -133,6 +133,7 @@ async function countMessageTokens(genAI, modelName, messages, systemPrompt) {
 }
 /**
  * Trim messages to fit within token limit (keep most recent messages)
+ * Reserves tokens for system prompt to ensure it's always included
  */
 async function trimMessagesToLimit(genAI, modelName, messages, maxTokens, systemPrompt) {
     // Always keep last message (current user input)
@@ -140,25 +141,35 @@ async function trimMessagesToLimit(genAI, modelName, messages, maxTokens, system
         return messages;
     const lastMessage = messages[messages.length - 1];
     let trimmedMessages = [...messages];
-    // Count tokens
-    let tokenCount = await countMessageTokens(genAI, modelName, trimmedMessages, systemPrompt);
+    // Reserve tokens for system prompt if provided
+    let availableTokensForMessages = maxTokens;
+    if (systemPrompt) {
+        const systemPromptTokens = await countMessageTokens(genAI, modelName, [
+            { role: 'user', content: systemPrompt },
+            { role: 'assistant', content: 'Understood. I will follow these instructions.' }
+        ]);
+        availableTokensForMessages = maxTokens - systemPromptTokens;
+        console.log(`📝 System prompt: ${systemPromptTokens} tokens | Available for messages: ${availableTokensForMessages} tokens`);
+    }
+    // Count tokens for messages only (without system prompt)
+    let tokenCount = await countMessageTokens(genAI, modelName, trimmedMessages);
     // If within limit, return all messages
-    if (tokenCount <= maxTokens) {
+    if (tokenCount <= availableTokensForMessages) {
         return trimmedMessages;
     }
-    console.log(`Messages exceed token limit (${tokenCount} > ${maxTokens}), trimming...`);
+    console.log(`Messages exceed token limit (${tokenCount} > ${availableTokensForMessages}), trimming...`);
     // Remove oldest messages until within limit (but keep last message)
-    while (trimmedMessages.length > 1 && tokenCount > maxTokens) {
+    while (trimmedMessages.length > 1 && tokenCount > availableTokensForMessages) {
         // Remove oldest message (not including last one)
         trimmedMessages = [trimmedMessages[0], ...trimmedMessages.slice(2)];
-        tokenCount = await countMessageTokens(genAI, modelName, trimmedMessages, systemPrompt);
+        tokenCount = await countMessageTokens(genAI, modelName, trimmedMessages);
     }
     // If still over limit, keep only last message
-    if (tokenCount > maxTokens) {
+    if (tokenCount > availableTokensForMessages) {
         console.warn('Even single message exceeds limit, keeping only last message');
         trimmedMessages = [lastMessage];
     }
-    console.log(`Trimmed to ${trimmedMessages.length} messages (${tokenCount} tokens)`);
+    console.log(`Trimmed to ${trimmedMessages.length} messages (${tokenCount} tokens + ${systemPrompt ? 'system prompt' : 'no system prompt'})`);
     return trimmedMessages;
 }
 /**
