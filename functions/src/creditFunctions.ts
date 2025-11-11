@@ -3,14 +3,8 @@
 
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
-import cors from 'cors';
 
-const corsHandler = cors({ origin: true });
 const db = admin.firestore();
-
-// Import types (will need to copy or import from ../types)
-type CreditStatus = 'NOT_CLAIMED' | 'CLAIMED' | 'SECOND_GRANT_CLAIMED' | 'AD_WATCH_CLAIMED';
-type SubscriptionTier = 'FREE' | 'PRO' | 'ULTRA';
 
 // Constants
 const TRIAL_CONFIG = {
@@ -29,12 +23,6 @@ const ANTIFRAUD_LIMITS = {
   IP_RESET_HOURS: 24,
   DEVICE_ABUSE_THRESHOLD: 10,
   MAX_TRIAL_PER_DEVICE: 1,
-};
-
-const MONTHLY_CREDITS = {
-  FREE: 0,
-  PRO: 3000,
-  ULTRA: 10000,
 };
 
 /**
