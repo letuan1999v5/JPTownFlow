@@ -313,8 +313,15 @@ export const geminiChat = functions.https.onRequest((request, response) => {
       let warnings: string[] = [];
 
       // Check and manage existing cache
+      console.log(`🔍 Cache check: cacheId=${cacheId ? 'EXISTS' : 'NULL'}, cacheCreatedAt=${cacheCreatedAt || 'NULL'}`);
+
       if (cacheId && cacheCreatedAt) {
         const cacheDate = new Date(cacheCreatedAt);
+        const now = new Date();
+        const ageMinutes = (now.getTime() - cacheDate.getTime()) / (1000 * 60);
+
+        console.log(`⏰ Cache age: ${ageMinutes.toFixed(1)} minutes (TTL: ${CACHE_TTL_MINUTES} min)`);
+
         const cacheValid = isCacheValid(cacheDate);
 
         if (cacheValid) {
@@ -322,13 +329,16 @@ export const geminiChat = functions.https.onRequest((request, response) => {
           const renewResult = await checkAndRenewCacheIfNeeded(cacheManager, cacheId, cacheDate);
           if (renewResult.renewed && renewResult.updatedAt) {
             newCacheCreatedAt = renewResult.updatedAt;
+            console.log(`🔄 Cache TTL renewed`);
           }
 
           useCachedContent = true;
-          console.log(`Using existing cache: ${cacheId}`);
+          console.log(`✅ Using existing cache: ${cacheId}`);
         } else {
-          console.log('Cache expired, will create new cache');
+          console.log(`❌ Cache expired (${ageMinutes.toFixed(1)} min > ${CACHE_TTL_MINUTES} min), will create new cache`);
         }
+      } else {
+        console.log(`⚠️ No existing cache to reuse (cacheId or cacheCreatedAt missing)`);
       }
 
       // API Call
