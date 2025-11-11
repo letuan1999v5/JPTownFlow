@@ -7,6 +7,9 @@ import cors from 'cors';
 // Initialize Firebase Admin
 admin.initializeApp();
 
+// Export credit system functions
+export * from './creditFunctions';
+
 // Initialize CORS
 const corsHandler = cors({ origin: true });
 
