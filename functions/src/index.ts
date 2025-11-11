@@ -428,8 +428,9 @@ export const geminiChat = functions.https.onRequest((request, response) => {
         throw new Error('Failed to get API response');
       }
 
-      // Create new cache after response (if conversation long enough)
-      if (messages.length >= 2) {
+      // Create new cache ONLY if we didn't use an existing cache
+      // (to avoid creating duplicate caches and wasting quota)
+      if (!useCachedContent && messages.length >= 2) {
         try {
           const fullConversation = [
             ...(systemPrompt ? [
@@ -461,11 +462,19 @@ export const geminiChat = functions.https.onRequest((request, response) => {
             newCacheId = cacheMetadata.cacheId;
             newCacheCreatedAt = cacheMetadata.createdAt;
             cachedTokens = cacheMetadata.cachedTokenCount;
-            console.log(`Cache created: ${newCacheId} (${cachedTokens} tokens)`);
+            console.log(`✨ Cache created: ${newCacheId} (${cachedTokens} tokens)`);
           }
         } catch (error) {
           console.error('Failed to create cache:', error);
           warnings.push('Failed to create cache for future requests. Caching disabled for this conversation.');
+        }
+      } else if (useCachedContent) {
+        console.log(`♻️ Reusing existing cache (no new cache created)`);
+        // Keep using the existing cache
+        newCacheId = cacheId;
+        // newCacheCreatedAt already set if cache was renewed
+        if (!newCacheCreatedAt && cacheCreatedAt) {
+          newCacheCreatedAt = new Date(cacheCreatedAt);
         }
       }
 
