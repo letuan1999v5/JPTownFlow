@@ -10,6 +10,9 @@ admin.initializeApp();
 // Export credit system functions
 export * from './creditFunctions';
 
+// Export migration functions
+export * from './migrationFunctions';
+
 // Initialize CORS
 const corsHandler = cors({ origin: true });
 
