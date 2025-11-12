@@ -13,25 +13,6 @@ export default function MoreScreen() {
 
   const menuItems = [
     {
-      id: 'aiMap',
-      icon: '🗺️',
-      title: t('aiMap', 'AI Map'),
-      description: t('aiMapDescription', 'Find nearby supermarkets, restaurants, and entertainment'),
-      route: '/ai-map',
-      color: '#8B5CF6',
-      requireAuth: true,
-      badge: 'ULTRA',
-    },
-    {
-      id: 'aiTransportation',
-      icon: '🚇',
-      title: t('aiTransportation', 'AI Transportation'),
-      description: t('aiTransportationDescription', 'Guide for public transportation in Japan'),
-      route: '/ai-transportation',
-      color: '#3B82F6',
-      requireAuth: true,
-    },
-    {
       id: 'vocabularyNotebooks',
       icon: '📚',
       title: t('vocabularyNotebooks', 'Vocabulary Notebooks'),

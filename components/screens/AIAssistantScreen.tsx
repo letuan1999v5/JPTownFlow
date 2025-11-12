@@ -3,7 +3,7 @@ import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
-import { MessageCircle, BookOpen, Globe, Lock, Languages } from 'lucide-react-native';
+import { MessageCircle, BookOpen, Globe, Lock, Languages, MapPin, Train } from 'lucide-react-native';
 import { useAuth } from '../../context/AuthContext';
 
 export default function AIAssistantScreen() {
@@ -59,6 +59,24 @@ export default function AIAssistantScreen() {
       color: '#F59E0B',
       route: '/web-browser',
     },
+    {
+      id: 'map',
+      icon: MapPin,
+      titleKey: 'aiMap',
+      descKey: 'aiMapDescription',
+      color: '#8B5CF6',
+      route: '/ai-map',
+      badge: 'ULTRA',
+      ultraOnly: true,
+    },
+    {
+      id: 'transportation',
+      icon: Train,
+      titleKey: 'aiTransportation',
+      descKey: 'aiTransportationDescription',
+      color: '#3B82F6',
+      route: '/ai-transportation',
+    },
   ];
 
   return (
@@ -86,10 +104,17 @@ export default function AIAssistantScreen() {
                 <Icon size={40} color={feature.color} />
               </View>
               <View style={styles.featureContent}>
-                <Text style={styles.featureTitle}>
-                  {t(feature.titleKey, feature.titleKey)}
-                  {isLocked && ' 🔒'}
-                </Text>
+                <View style={styles.titleRow}>
+                  <Text style={styles.featureTitle}>
+                    {t(feature.titleKey, feature.titleKey)}
+                    {isLocked && ' 🔒'}
+                  </Text>
+                  {feature.badge && (
+                    <View style={styles.badge}>
+                      <Text style={styles.badgeText}>{feature.badge}</Text>
+                    </View>
+                  )}
+                </View>
                 <Text style={styles.featureDesc}>{t(feature.descKey, feature.descKey)}</Text>
               </View>
               <Text style={[styles.arrow, { color: feature.color }]}>→</Text>
@@ -153,11 +178,27 @@ const styles = StyleSheet.create({
   featureContent: {
     flex: 1,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
   featureTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#1F2937',
-    marginBottom: 4,
+  },
+  badge: {
+    backgroundColor: '#8B5CF6',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  badgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   featureDesc: {
     fontSize: 14,
