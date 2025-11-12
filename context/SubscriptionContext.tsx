@@ -12,12 +12,13 @@ import { SubscriptionTier, UserSubscription } from '../types/subscription';
 import { db } from '../firebase/firebaseConfig';
 import { useAuth } from './AuthContext';
 import {
-  CreditBalance,
-  getTotalCredits,
   canUseModel,
   AIModelTier,
   CREDIT_ALLOCATIONS
 } from '../types/credits';
+import {
+  CreditBalance,
+} from '../types/newCredits';
 import {
   getCreditBalance as getOldCreditBalance,
   checkAndResetCredits,
@@ -201,7 +202,7 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
 
   const getTotalAvailableCredits = (): number => {
     if (!creditBalance) return 0;
-    return getTotalCredits(creditBalance);
+    return creditBalance.total;
   };
 
   const value = {

@@ -62,6 +62,9 @@ export interface CreditBalance {
   monthly: number;
   purchase: number;
   total: number;
+  // Expiry dates for time-limited credits
+  trialExpiresAt?: Timestamp | null;
+  monthlyResetAt?: Timestamp | null;
 }
 
 // Credit transaction document

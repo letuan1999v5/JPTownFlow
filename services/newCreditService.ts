@@ -53,6 +53,8 @@ export async function getCreditBalance(userId: string): Promise<CreditBalance | 
         monthly: 0,
         purchase: credits,
         total: credits,
+        trialExpiresAt: null,
+        monthlyResetAt: null,
       };
     }
 
@@ -72,6 +74,8 @@ export async function getCreditBalance(userId: string): Promise<CreditBalance | 
         monthly: updatedCredits?.monthly?.amount || 0,
         purchase: updatedCredits?.purchase?.amount || 0,
         total: calculateTotalCredits(updatedCredits),
+        trialExpiresAt: updatedCredits?.trial?.expiresAt || null,
+        monthlyResetAt: updatedCredits?.monthly?.resetAt || null,
       };
     }
 
