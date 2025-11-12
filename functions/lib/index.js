@@ -32,6 +32,9 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __exportStar = (this && this.__exportStar) || function(m, exports) {
+    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
+};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -44,6 +47,10 @@ const server_1 = require("@google/generative-ai/server");
 const cors_1 = __importDefault(require("cors"));
 // Initialize Firebase Admin
 admin.initializeApp();
+// Export credit system functions
+__exportStar(require("./creditFunctions"), exports);
+// Export migration functions
+__exportStar(require("./migrationFunctions"), exports);
 // Initialize CORS
 const corsHandler = (0, cors_1.default)({ origin: true });
 // Cache management constants
