@@ -1,30 +1,30 @@
 // app/japanese-learning.tsx
-import React, { useState, useRef, useEffect } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { collection, doc, getDoc, getDocs, query, setDoc, Timestamp, updateDoc, where } from 'firebase/firestore';
+import { ArrowLeft, List, Send, Settings, Star } from 'lucide-react-native';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  View,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Modal,
-  Alert,
+  View,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Send, Settings, Star, List } from 'lucide-react-native';
-import { chatJapaneseLearning, ChatMessage, TokenUsage } from '../services/geminiService';
 import TranslatableText, { TranslatableWord } from '../components/common/TranslatableText';
+import { CreditDisplay, CreditInfoModal, ModelSelector } from '../components/credits';
 import SaveToNotebookModal from '../components/vocabulary/SaveToNotebookModal';
 import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
-import { CreditDisplay, CreditInfoModal, ModelSelector } from '../components/credits';
-import { AIModelTier } from '../types/credits';
-import { doc, setDoc, getDoc, updateDoc, Timestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig';
+import { chatJapaneseLearning, ChatMessage, TokenUsage } from '../services/geminiService';
+import { AIModelTier } from '../types/credits';
 
 type JLPTLevel = 'N1' | 'N2' | 'N3' | 'N4' | 'N5';
 type TranslationLanguage = 'ja' | 'en' | 'vi' | 'zh' | 'ko' | 'pt' | 'es' | 'fil' | 'th' | 'id';
@@ -386,7 +386,7 @@ export default function JapaneseLearningScreen() {
 
       // Check if it's a credit error
       if (error.message?.includes('Insufficient credits') ||
-          error.message?.includes('Failed to deduct credits')) {
+        error.message?.includes('Failed to deduct credits')) {
         Alert.alert(
           t('insufficientCredits', 'Insufficient Credits'),
           t('insufficientCreditsMessage', 'You have run out of credits. Please wait for your daily/monthly reset or upgrade your plan for more credits.'),
