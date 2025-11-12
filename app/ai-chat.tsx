@@ -19,8 +19,7 @@ import { ArrowLeft, Send, Star, List, Settings } from 'lucide-react-native';
 import { chatWithAI, ChatMessage, TokenUsage, CachingOptions } from '../services/geminiService';
 import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
-import { CreditDisplay, CreditInfoModal, ModelSelector } from '../components/credits';
-import { AIModelTier } from '../types/credits';
+import { CreditDisplay, CreditInfoModal } from '../components/credits';
 import { doc, setDoc, getDoc, updateDoc, Timestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig';
 
@@ -42,7 +41,6 @@ export default function AIChatScreen() {
   const [translationLanguage, setTranslationLanguage] = useState<TranslationLanguage>(
     i18n.language as TranslationLanguage
   );
-  const [selectedModel, setSelectedModel] = useState<AIModelTier>('lite');
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showCreditInfo, setShowCreditInfo] = useState(false);
   const [isImportant, setIsImportant] = useState(false);
@@ -304,7 +302,7 @@ export default function AIChatScreen() {
         userTier,
         [...messages, userMessage],
         translationLanguage,
-        selectedModel,
+        'lite', // AI Chat uses Lite 2.5 model
         onTokenUsage,
         undefined, // groundingOptions
         {
@@ -473,7 +471,6 @@ export default function AIChatScreen() {
       {/* Credit Display */}
       <View style={{ padding: 16, paddingBottom: 8 }}>
         <CreditDisplay
-          selectedModel={selectedModel}
           onInfoPress={() => setShowCreditInfo(true)}
           showInfoIcon={true}
         />
@@ -542,12 +539,6 @@ export default function AIChatScreen() {
             <Text style={styles.modalTitle}>{t('chatSettings', 'Chat Settings')}</Text>
 
             <ScrollView style={styles.modalScrollView} showsVerticalScrollIndicator={false}>
-              {/* AI Model Selector */}
-              <ModelSelector
-                selectedModel={selectedModel}
-                onModelChange={setSelectedModel}
-              />
-
               {/* Translation Language Section */}
               <Text style={styles.sectionTitle}>{t('translationLanguage', 'Translation Language')}</Text>
               {translationLanguages.map((lang) => (

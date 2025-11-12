@@ -19,8 +19,7 @@ import { ArrowLeft, Send, MapPin, Star } from 'lucide-react-native';
 import { chatWithAI, ChatMessage } from '../services/geminiService';
 import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
-import { CreditDisplay, CreditInfoModal, ModelSelector } from '../components/credits';
-import { AIModelTier } from '../types/credits';
+import { CreditDisplay, CreditInfoModal } from '../components/credits';
 
 export default function AIMapScreen() {
   const { t, i18n } = useTranslation();
@@ -31,7 +30,6 @@ export default function AIMapScreen() {
   const isSuperAdmin = role === 'superadmin';
   const isUltraOrAbove = subscription?.tier === 'ULTRA' || isSuperAdmin;
 
-  const [selectedModel, setSelectedModel] = useState<AIModelTier>('lite');
   const [showCreditInfo, setShowCreditInfo] = useState(false);
   const { creditBalance, refreshCreditBalance } = useSubscription();
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -118,7 +116,7 @@ Remember to be specific and practical with your recommendations. If you don't ha
     try {
       const response = await chatWithAI(
         updatedMessages,
-        selectedModel,
+        'flash', // AI Map uses Flash 2.5 model
         {
           systemPrompt,
           cacheId: cacheId || undefined,
@@ -171,19 +169,10 @@ Remember to be specific and practical with your recommendations. If you don't ha
         </View>
         <View style={styles.headerRight}>
           <CreditDisplay
-            selectedModel={selectedModel}
             onInfoPress={() => setShowCreditInfo(true)}
             showInfoIcon={true}
           />
         </View>
-      </View>
-
-      {/* Model Selector */}
-      <View style={styles.modelSelectorContainer}>
-        <ModelSelector
-          selectedModel={selectedModel}
-          onModelChange={setSelectedModel}
-        />
       </View>
 
       {/* Messages */}
@@ -300,13 +289,6 @@ const styles = StyleSheet.create({
   },
   headerRight: {
     alignItems: 'flex-end',
-  },
-  modelSelectorContainer: {
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
   },
   messagesContainer: {
     flex: 1,
