@@ -15,8 +15,74 @@ import {
   CREDIT_EXTRAS,
   UserCredits,
 } from '../types/newCredits';
+import { UserSubscription } from '../types/subscription';
 import { canMakePurchase } from './antifraudService';
 import { grantMonthlyCredits, grantPurchaseCredits } from './newCreditService';
+
+// ============ LEGACY FUNCTIONS FOR BACKWARD COMPATIBILITY ============
+
+/**
+ * LEGACY: Check and transition subscription
+ * @deprecated In new system, subscription is part of user credits
+ */
+export async function checkAndTransitionSubscription(userId: string): Promise<void> {
+  // No-op in new system - kept for backward compatibility
+  console.log('[Legacy] checkAndTransitionSubscription - no-op in new system');
+}
+
+/**
+ * LEGACY: Get active tier from subscription object
+ * @deprecated Use user.credits.monthly.subscriptionTier directly
+ */
+export function getActiveTier(subscription: UserSubscription | null): SubscriptionTier {
+  return subscription?.tier || 'FREE';
+}
+
+/**
+ * LEGACY: Change subscription tier
+ * @deprecated Use upgradeToProSubscription or upgradeToUltraSubscription
+ */
+export async function changeSubscription(
+  userId: string,
+  newTier: SubscriptionTier
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const userDoc = await getDoc(doc(db, 'users', userId));
+    if (!userDoc.exists()) {
+      return { success: false, message: 'User not found' };
+    }
+
+    const userData = userDoc.data();
+    const currentTier = userData.credits?.monthly?.subscriptionTier || 'FREE';
+
+    if (currentTier === newTier) {
+      return { success: false, message: 'Already on this tier' };
+    }
+
+    const now = Timestamp.now();
+    const nextResetDate = new Timestamp(
+      now.seconds + 30 * 24 * 60 * 60,
+      now.nanoseconds
+    );
+
+    await updateDoc(doc(db, 'users', userId), {
+      'credits.monthly.subscriptionTier': newTier,
+      'credits.monthly.resetAt': nextResetDate,
+    });
+
+    // Grant monthly credits for new tier
+    if (newTier !== 'FREE') {
+      await grantMonthlyCredits(userId, newTier);
+    }
+
+    return { success: true, message: `Subscription changed to ${newTier}` };
+  } catch (error: any) {
+    console.error('Error changing subscription:', error);
+    return { success: false, message: error.message || 'Failed' };
+  }
+}
+
+// ============ NEW CREDIT SYSTEM FUNCTIONS ============
 
 /**
  * Upgrade user to PRO subscription
