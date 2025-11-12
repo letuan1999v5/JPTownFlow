@@ -115,15 +115,15 @@ export const MONTHLY_CREDITS = {
   ULTRA: 10000,
 } as const;
 
-// Credit extras
+// Credit extras (only available for paid users)
 export const CREDIT_EXTRAS = {
   EXTRA_1: {
-    price: 199,  // JPY
-    credits: 300,
+    price: 280,  // JPY
+    credits: 500,  // Never expires
   },
   EXTRA_2: {
-    price: 798,  // JPY
-    credits: 1500,
+    price: 780,  // JPY
+    credits: 1500,  // Never expires
   },
 } as const;
 

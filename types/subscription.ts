@@ -40,8 +40,8 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
   {
     id: 'PRO',
     nameKey: 'subscriptionPro',
-    price: 800,
-    credits: 1000,
+    price: 1280,
+    credits: 3000,
     creditPeriod: 'monthly',
     allowedModels: ['lite', 'standard'],
     features: [
@@ -50,7 +50,7 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
       'featureLanguageSupport',
       'featureAIGarbageRecognition',
       'featureAIStandardModel',
-      'feature1000CreditsMonthly',
+      'feature3000CreditsMonthly',
       'featureCanBuyExtraCredits',
       'featureAdFree',
     ],
@@ -59,7 +59,7 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
   {
     id: 'ULTRA',
     nameKey: 'subscriptionUltra',
-    price: 1500,
+    price: 2880,
     credits: 10000,
     creditPeriod: 'monthly',
     allowedModels: ['lite', 'standard', 'pro'],
