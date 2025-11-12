@@ -18,7 +18,7 @@ export default function AIDocumentAnalysisScreen() {
   const { user, subscription, role } = useAuth();
 
   const isSuperAdmin = role === 'superadmin';
-  const isUltraOrAbove = subscription?.tier === 'ULTRA' || isSuperAdmin;
+  const isUltraOrAbove = subscription === 'ULTRA' || isSuperAdmin;
 
   // Check subscription access
   useEffect(() => {

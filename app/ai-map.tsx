@@ -28,7 +28,7 @@ export default function AIMapScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
 
   const isSuperAdmin = role === 'superadmin';
-  const isUltraOrAbove = subscription?.tier === 'ULTRA' || isSuperAdmin;
+  const isUltraOrAbove = subscription === 'ULTRA' || isSuperAdmin;
 
   const [showCreditInfo, setShowCreditInfo] = useState(false);
   const { creditBalance, refreshCreditBalance } = useSubscription();

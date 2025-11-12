@@ -35,7 +35,7 @@ export default function AIAssistantScreen() {
     }
 
     // Check subscription tier requirement
-    const userTier = subscription?.tier || 'FREE';
+    const userTier = subscription || 'FREE';
     const requiredTier = feature.requiredTier || 'FREE';
 
     // Tier hierarchy: FREE < PRO < ULTRA
@@ -140,7 +140,7 @@ export default function AIAssistantScreen() {
         {features.map((feature) => {
           const Icon = feature.icon;
           const isLocked = !user;
-          const userTier = subscription?.tier || 'FREE';
+          const userTier = subscription || 'FREE';
           const requiredTier = feature.requiredTier || 'FREE';
 
           const tierLevel: Record<SubscriptionTier, number> = {
