@@ -30,8 +30,9 @@ import {
 /**
  * Calculate total credits from all sources
  */
-export function calculateTotalCredits(credits: UserCredits): number {
-  return credits.trial.amount + credits.monthly.amount + credits.purchase.amount;
+export function calculateTotalCredits(credits: UserCredits | null | undefined): number {
+  if (!credits) return 0;
+  return (credits.trial?.amount || 0) + (credits.monthly?.amount || 0) + (credits.purchase?.amount || 0);
 }
 
 /**
@@ -43,21 +44,38 @@ export async function getCreditBalance(userId: string): Promise<CreditBalance | 
     if (!userDoc.exists()) return null;
 
     const userData = userDoc.data();
-    const credits = userData.credits as UserCredits;
+    const credits = userData.credits;
+
+    // BACKWARD COMPATIBILITY: Handle old format (number)
+    if (typeof credits === 'number') {
+      return {
+        trial: 0,
+        monthly: 0,
+        purchase: credits,
+        total: credits,
+      };
+    }
+
+    // New format
+    const userCredits = credits as UserCredits;
 
     // Check and expire trial credits if needed
-    await checkAndExpireTrialCredits(userId, credits);
+    if (userCredits) {
+      await checkAndExpireTrialCredits(userId, userCredits);
 
-    // Recalculate after potential expiry
-    const updatedDoc = await getDoc(doc(db, 'users', userId));
-    const updatedCredits = updatedDoc.data()?.credits as UserCredits;
+      // Recalculate after potential expiry
+      const updatedDoc = await getDoc(doc(db, 'users', userId));
+      const updatedCredits = updatedDoc.data()?.credits as UserCredits;
 
-    return {
-      trial: updatedCredits.trial.amount,
-      monthly: updatedCredits.monthly.amount,
-      purchase: updatedCredits.purchase.amount,
-      total: calculateTotalCredits(updatedCredits),
-    };
+      return {
+        trial: updatedCredits?.trial?.amount || 0,
+        monthly: updatedCredits?.monthly?.amount || 0,
+        purchase: updatedCredits?.purchase?.amount || 0,
+        total: calculateTotalCredits(updatedCredits),
+      };
+    }
+
+    return null;
   } catch (error) {
     console.error('Error getting credit balance:', error);
     return null;
@@ -68,6 +86,7 @@ export async function getCreditBalance(userId: string): Promise<CreditBalance | 
  * Check if trial credits have expired and reset them to 0
  */
 async function checkAndExpireTrialCredits(userId: string, credits: UserCredits): Promise<void> {
+  if (!credits?.trial) return;
   if (credits.trial.amount === 0) return;
   if (!credits.trial.expiresAt) return;
 
@@ -76,7 +95,7 @@ async function checkAndExpireTrialCredits(userId: string, credits: UserCredits):
     // Trial credits expired
     await updateDoc(doc(db, 'users', userId), {
       'credits.trial.amount': 0,
-      'credits.total': credits.monthly.amount + credits.purchase.amount,
+      'credits.total': (credits.monthly?.amount || 0) + (credits.purchase?.amount || 0),
     });
 
     console.log(`Trial credits expired for user ${userId}`);
@@ -107,19 +126,64 @@ export async function deductCredits(
     }
 
     const userData = userDoc.data();
-    const credits = userData.credits as UserCredits;
+    const credits = userData.credits;
+
+    // BACKWARD COMPATIBILITY: Check if credits is old format (number)
+    if (typeof credits === 'number') {
+      // Old format detected - treat all credits as purchase credits
+      const balanceBefore: CreditBalance = {
+        trial: 0,
+        monthly: 0,
+        purchase: credits,
+        total: credits,
+      };
+
+      if (balanceBefore.total < amount) {
+        return {
+          success: false,
+          message: `Insufficient credits. Required: ${amount}, Available: ${balanceBefore.total}`,
+          balanceBefore,
+          balanceAfter: balanceBefore,
+          breakdown: { trialUsed: 0, monthlyUsed: 0, purchaseUsed: 0 },
+        };
+      }
+
+      // Deduct from old credits
+      await updateDoc(userDocRef, {
+        credits: credits - amount,
+      });
+
+      const balanceAfter: CreditBalance = {
+        trial: 0,
+        monthly: 0,
+        purchase: credits - amount,
+        total: credits - amount,
+      };
+
+      return {
+        success: true,
+        message: `Deducted ${amount} credits (legacy format)`,
+        balanceBefore,
+        balanceAfter,
+        breakdown: { trialUsed: 0, monthlyUsed: 0, purchaseUsed: amount },
+      };
+    }
+
+    // New format - proceed normally
+    const userCredits = credits as UserCredits;
 
     // Check and expire trial credits first
-    await checkAndExpireTrialCredits(userId, credits);
+    await checkAndExpireTrialCredits(userId, userCredits);
 
     // Get fresh data after expiry check
     const freshDoc = await getDoc(userDocRef);
-    const freshCredits = freshDoc.data()?.credits as UserCredits;
+    const freshData = freshDoc.data();
+    const freshCredits = freshData?.credits as UserCredits;
 
     const balanceBefore: CreditBalance = {
-      trial: freshCredits.trial.amount,
-      monthly: freshCredits.monthly.amount,
-      purchase: freshCredits.purchase.amount,
+      trial: freshCredits?.trial?.amount || 0,
+      monthly: freshCredits?.monthly?.amount || 0,
+      purchase: freshCredits?.purchase?.amount || 0,
       total: calculateTotalCredits(freshCredits),
     };
 
