@@ -1,4 +1,4 @@
-// app/ai-map.tsx - AI-powered location recommendation (ULTRA only)
+// app/ai-map.tsx - AI-powered location recommendation with Google Maps (ULTRA only)
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -9,27 +9,47 @@ import {
   ScrollView,
   StyleSheet,
   ActivityIndicator,
-  KeyboardAvoidingView,
   Platform,
-  Modal,
   Alert,
+  Dimensions,
+  Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Send, MapPin, Star } from 'lucide-react-native';
+import { ArrowLeft, Send, MapPin, Star, Navigation, ChevronUp, ChevronDown } from 'lucide-react-native';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import * as Location from 'expo-location';
 import { chatWithAI, ChatMessage } from '../services/geminiService';
 import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import { CreditDisplay, CreditInfoModal } from '../components/credits';
 
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const CHAT_MIN_HEIGHT = 180; // Minimum chat panel height
+const CHAT_MAX_HEIGHT = SCREEN_HEIGHT * 0.6; // Maximum 60% of screen
+
 export default function AIMapScreen() {
   const { t, i18n } = useTranslation();
   const router = useRouter();
   const { user, subscription, role } = useAuth();
-  const scrollViewRef = useRef<ScrollView>(null);
+  const mapRef = useRef<MapView>(null);
+  const chatScrollRef = useRef<ScrollView>(null);
 
   const isSuperAdmin = role === 'superadmin';
   const isUltraOrAbove = subscription === 'ULTRA' || isSuperAdmin;
 
+  // Map states
+  const [region, setRegion] = useState({
+    latitude: 35.6762, // Tokyo default
+    longitude: 139.6503,
+    latitudeDelta: 0.0922,
+    longitudeDelta: 0.0421,
+  });
+  const [currentLocation, setCurrentLocation] = useState<Location.LocationObject | null>(null);
+  const [locationPermission, setLocationPermission] = useState(false);
+
+  // Chat states
+  const [chatExpanded, setChatExpanded] = useState(false);
+  const chatHeight = useRef(new Animated.Value(CHAT_MIN_HEIGHT)).current;
   const [showCreditInfo, setShowCreditInfo] = useState(false);
   const { creditBalance, refreshCreditBalance } = useSubscription();
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -78,11 +98,28 @@ export default function AIMapScreen() {
 
 Remember to be specific and practical with your recommendations. If you don't have exact information, suggest how the user can verify details (e.g., checking Google Maps, calling ahead).`;
 
+  // Request location permission and get current location
   useEffect(() => {
-    setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
-    }, 100);
-  }, [messages]);
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setLocationPermission(false);
+        return;
+      }
+      setLocationPermission(true);
+
+      const location = await Location.getCurrentPositionAsync({});
+      setCurrentLocation(location);
+
+      // Center map on current location
+      setRegion({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        latitudeDelta: 0.0922,
+        longitudeDelta: 0.0421,
+      });
+    })();
+  }, []);
 
   // Check subscription access
   useEffect(() => {
@@ -100,6 +137,43 @@ Remember to be specific and practical with your recommendations. If you don't ha
     }
   }, [user, isUltraOrAbove]);
 
+  // Auto scroll chat to bottom when new message
+  useEffect(() => {
+    setTimeout(() => {
+      chatScrollRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+  }, [messages]);
+
+  const toggleChatExpand = () => {
+    const toValue = chatExpanded ? CHAT_MIN_HEIGHT : CHAT_MAX_HEIGHT;
+    Animated.spring(chatHeight, {
+      toValue,
+      useNativeDriver: false,
+      tension: 80,
+      friction: 12,
+    }).start();
+    setChatExpanded(!chatExpanded);
+  };
+
+  const handleGoToCurrentLocation = async () => {
+    if (!locationPermission) {
+      Alert.alert(
+        t('locationPermission', 'Location Permission'),
+        t('locationPermissionDesc', 'Please enable location permission to use this feature.')
+      );
+      return;
+    }
+
+    if (currentLocation) {
+      mapRef.current?.animateToRegion({
+        latitude: currentLocation.coords.latitude,
+        longitude: currentLocation.coords.longitude,
+        latitudeDelta: 0.0922,
+        longitudeDelta: 0.0421,
+      });
+    }
+  };
+
   const handleSend = async () => {
     if (!inputText.trim()) return;
 
@@ -112,6 +186,11 @@ Remember to be specific and practical with your recommendations. If you don't ha
     setMessages(updatedMessages);
     setInputText('');
     setLoading(true);
+
+    // Expand chat if not expanded
+    if (!chatExpanded) {
+      toggleChatExpand();
+    }
 
     try {
       const response = await chatWithAI(
@@ -149,96 +228,155 @@ Remember to be specific and practical with your recommendations. If you don't ha
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
-      {/* Header */}
+    <View style={styles.container}>
+      {/* Map View */}
+      <MapView
+        ref={mapRef}
+        style={styles.map}
+        provider={PROVIDER_GOOGLE}
+        region={region}
+        onRegionChangeComplete={setRegion}
+        showsUserLocation={locationPermission}
+        showsMyLocationButton={false}
+        showsCompass={true}
+      >
+        {currentLocation && (
+          <Marker
+            coordinate={{
+              latitude: currentLocation.coords.latitude,
+              longitude: currentLocation.coords.longitude,
+            }}
+            title={t('currentLocation', 'Current Location')}
+          />
+        )}
+      </MapView>
+
+      {/* Floating Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backButton}
+        >
           <ArrowLeft size={24} color="#1F2937" />
         </TouchableOpacity>
+
         <View style={styles.titleContainer}>
-          <MapPin size={24} color="#8B5CF6" />
+          <MapPin size={20} color="#8B5CF6" />
           <Text style={styles.title}>{t('aiMap', 'AI Map')}</Text>
           <View style={styles.ultraBadge}>
-            <Star size={12} color="#FFFFFF" fill="#FFFFFF" />
+            <Star size={10} color="#FFFFFF" fill="#FFFFFF" />
             <Text style={styles.ultraText}>ULTRA</Text>
           </View>
         </View>
-        <View style={styles.headerRight}>
-          <CreditDisplay
-            onInfoPress={() => setShowCreditInfo(true)}
-            showInfoIcon={true}
-          />
-        </View>
+
+        <View style={styles.headerRight} />
       </View>
 
-      {/* Messages */}
-      <ScrollView
-        ref={scrollViewRef}
-        style={styles.messagesContainer}
-        contentContainerStyle={styles.messagesContent}
+      {/* Floating Credit Display */}
+      <View style={styles.creditContainer}>
+        <CreditDisplay
+          onInfoPress={() => setShowCreditInfo(true)}
+          showInfoIcon={true}
+        />
+      </View>
+
+      {/* Current Location Button */}
+      <TouchableOpacity
+        style={styles.locationButton}
+        onPress={handleGoToCurrentLocation}
       >
-        {messages.map((message, index) => (
-          <View
-            key={index}
-            style={[
-              styles.messageBubble,
-              message.role === 'user' ? styles.userBubble : styles.assistantBubble,
-            ]}
-          >
-            {message.role === 'assistant' && (
-              <View style={styles.assistantIcon}>
-                <MapPin size={16} color="#8B5CF6" />
-              </View>
-            )}
-            <Text
-              style={[
-                styles.messageText,
-                message.role === 'user' ? styles.userText : styles.assistantText,
-              ]}
-            >
-              {message.content}
+        <Navigation size={24} color="#8B5CF6" />
+      </TouchableOpacity>
+
+      {/* Floating Chat Panel */}
+      <Animated.View style={[styles.chatPanel, { height: chatHeight }]}>
+        {/* Chat Header */}
+        <TouchableOpacity
+          style={styles.chatHeader}
+          onPress={toggleChatExpand}
+          activeOpacity={0.7}
+        >
+          <View style={styles.chatHeaderLeft}>
+            <MapPin size={18} color="#8B5CF6" />
+            <Text style={styles.chatHeaderTitle}>
+              {t('askAboutLocations', 'Ask about nearby places')}
             </Text>
           </View>
-        ))}
-        {loading && (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color="#8B5CF6" />
-            <Text style={styles.loadingText}>{t('thinking', 'Thinking...')}</Text>
-          </View>
-        )}
-      </ScrollView>
-
-      {/* Input */}
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.input}
-          value={inputText}
-          onChangeText={setInputText}
-          placeholder={t('askAboutLocations', 'Ask about nearby places...')}
-          placeholderTextColor="#9CA3AF"
-          multiline
-          maxLength={1000}
-          editable={!loading}
-        />
-        <TouchableOpacity
-          style={[styles.sendButton, (!inputText.trim() || loading) && styles.sendButtonDisabled]}
-          onPress={handleSend}
-          disabled={!inputText.trim() || loading}
-        >
-          <Send size={20} color="#FFFFFF" />
+          {chatExpanded ? (
+            <ChevronDown size={20} color="#6B7280" />
+          ) : (
+            <ChevronUp size={20} color="#6B7280" />
+          )}
         </TouchableOpacity>
-      </View>
+
+        {/* Messages - Only visible when expanded */}
+        {chatExpanded && (
+          <ScrollView
+            ref={chatScrollRef}
+            style={styles.messagesContainer}
+            contentContainerStyle={styles.messagesContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {messages.map((message, index) => (
+              <View
+                key={index}
+                style={[
+                  styles.messageBubble,
+                  message.role === 'user' ? styles.userBubble : styles.assistantBubble,
+                ]}
+              >
+                {message.role === 'assistant' && (
+                  <View style={styles.assistantIcon}>
+                    <MapPin size={14} color="#8B5CF6" />
+                  </View>
+                )}
+                <Text
+                  style={[
+                    styles.messageText,
+                    message.role === 'user' ? styles.userText : styles.assistantText,
+                  ]}
+                >
+                  {message.content}
+                </Text>
+              </View>
+            ))}
+            {loading && (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color="#8B5CF6" />
+                <Text style={styles.loadingText}>{t('thinking', 'Thinking...')}</Text>
+              </View>
+            )}
+          </ScrollView>
+        )}
+
+        {/* Input */}
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.input}
+            value={inputText}
+            onChangeText={setInputText}
+            placeholder={t('askAboutLocations', 'Ask about nearby places...')}
+            placeholderTextColor="#9CA3AF"
+            multiline
+            maxLength={500}
+            editable={!loading}
+          />
+          <TouchableOpacity
+            style={[styles.sendButton, (!inputText.trim() || loading) && styles.sendButtonDisabled]}
+            onPress={handleSend}
+            disabled={!inputText.trim() || loading}
+          >
+            <Send size={18} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
 
       {/* Credit Info Modal */}
       <CreditInfoModal
         visible={showCreditInfo}
         onClose={() => setShowCreditInfo(false)}
       />
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -247,29 +385,43 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F9FAFB',
   },
+  map: {
+    ...StyleSheet.absoluteFillObject,
+  },
   header: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 60,
+    paddingTop: Platform.OS === 'ios' ? 60 : 48,
     paddingBottom: 12,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: 'rgba(229, 231, 235, 0.8)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   backButton: {
     padding: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
   },
   titleContainer: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 6,
   },
   title: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
     color: '#1F2937',
   },
@@ -277,31 +429,93 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#8B5CF6',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 10,
+    gap: 3,
   },
   ultraText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
     color: '#FFFFFF',
   },
   headerRight: {
-    alignItems: 'flex-end',
+    width: 40,
+  },
+  creditContainer: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 120 : 108,
+    right: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 12,
+    padding: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  locationButton: {
+    position: 'absolute',
+    bottom: CHAT_MIN_HEIGHT + 16,
+    right: 16,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  chatPanel: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  chatHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  chatHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  chatHeaderTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1F2937',
   },
   messagesContainer: {
     flex: 1,
   },
   messagesContent: {
-    padding: 16,
-    gap: 12,
+    padding: 12,
+    gap: 8,
   },
   messageBubble: {
     maxWidth: '80%',
-    padding: 12,
+    padding: 10,
     borderRadius: 12,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   userBubble: {
     alignSelf: 'flex-end',
@@ -309,18 +523,16 @@ const styles = StyleSheet.create({
   },
   assistantBubble: {
     alignSelf: 'flex-start',
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    backgroundColor: '#F3F4F6',
     flexDirection: 'row',
-    gap: 8,
+    gap: 6,
   },
   assistantIcon: {
     marginTop: 2,
   },
   messageText: {
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 14,
+    lineHeight: 20,
   },
   userText: {
     color: '#FFFFFF',
@@ -333,36 +545,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    padding: 12,
+    padding: 10,
   },
   loadingText: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#6B7280',
     fontStyle: 'italic',
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    padding: 16,
-    backgroundColor: '#FFFFFF',
+    padding: 12,
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+    borderTopColor: '#F3F4F6',
     gap: 8,
+    backgroundColor: '#FFFFFF',
   },
   input: {
     flex: 1,
-    maxHeight: 100,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#F3F4F6',
+    maxHeight: 80,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: '#F9FAFB',
     borderRadius: 20,
-    fontSize: 15,
+    fontSize: 14,
     color: '#1F2937',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#8B5CF6',
     justifyContent: 'center',
     alignItems: 'center',
