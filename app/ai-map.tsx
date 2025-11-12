@@ -17,7 +17,7 @@ import {
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Send, MapPin, Star, Navigation, ChevronUp, ChevronDown } from 'lucide-react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
-import * as Location from 'expo-location';
+// import * as Location from 'expo-location'; // Temporarily disabled - requires rebuild
 import { chatWithAI, ChatMessage } from '../services/geminiService';
 import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
@@ -44,7 +44,7 @@ export default function AIMapScreen() {
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
   });
-  const [currentLocation, setCurrentLocation] = useState<Location.LocationObject | null>(null);
+  // const [currentLocation, setCurrentLocation] = useState<Location.LocationObject | null>(null);
   const [locationPermission, setLocationPermission] = useState(false);
 
   // Chat states
@@ -99,27 +99,28 @@ export default function AIMapScreen() {
 Remember to be specific and practical with your recommendations. If you don't have exact information, suggest how the user can verify details (e.g., checking Google Maps, calling ahead).`;
 
   // Request location permission and get current location
-  useEffect(() => {
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setLocationPermission(false);
-        return;
-      }
-      setLocationPermission(true);
+  // Temporarily disabled - requires rebuild with native modules
+  // useEffect(() => {
+  //   (async () => {
+  //     const { status } = await Location.requestForegroundPermissionsAsync();
+  //     if (status !== 'granted') {
+  //       setLocationPermission(false);
+  //       return;
+  //     }
+  //     setLocationPermission(true);
 
-      const location = await Location.getCurrentPositionAsync({});
-      setCurrentLocation(location);
+  //     const location = await Location.getCurrentPositionAsync({});
+  //     setCurrentLocation(location);
 
-      // Center map on current location
-      setRegion({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-        latitudeDelta: 0.0922,
-        longitudeDelta: 0.0421,
-      });
-    })();
-  }, []);
+  //     // Center map on current location
+  //     setRegion({
+  //       latitude: location.coords.latitude,
+  //       longitude: location.coords.longitude,
+  //       latitudeDelta: 0.0922,
+  //       longitudeDelta: 0.0421,
+  //     });
+  //   })();
+  // }, []);
 
   // Check subscription access
   useEffect(() => {
@@ -156,22 +157,19 @@ Remember to be specific and practical with your recommendations. If you don't ha
   };
 
   const handleGoToCurrentLocation = async () => {
-    if (!locationPermission) {
-      Alert.alert(
-        t('locationPermission', 'Location Permission'),
-        t('locationPermissionDesc', 'Please enable location permission to use this feature.')
-      );
-      return;
-    }
+    // Temporarily disabled - requires rebuild with native modules
+    Alert.alert(
+      t('locationNotAvailable', 'Location Not Available'),
+      t('locationNotAvailableDesc', 'Location feature requires app rebuild. Map will show Tokyo by default for now.')
+    );
 
-    if (currentLocation) {
-      mapRef.current?.animateToRegion({
-        latitude: currentLocation.coords.latitude,
-        longitude: currentLocation.coords.longitude,
-        latitudeDelta: 0.0922,
-        longitudeDelta: 0.0421,
-      });
-    }
+    // Go back to Tokyo default
+    mapRef.current?.animateToRegion({
+      latitude: 35.6762,
+      longitude: 139.6503,
+      latitudeDelta: 0.0922,
+      longitudeDelta: 0.0421,
+    });
   };
 
   const handleSend = async () => {
@@ -236,19 +234,19 @@ Remember to be specific and practical with your recommendations. If you don't ha
         provider={PROVIDER_GOOGLE}
         region={region}
         onRegionChangeComplete={setRegion}
-        showsUserLocation={locationPermission}
+        showsUserLocation={false}
         showsMyLocationButton={false}
         showsCompass={true}
       >
-        {currentLocation && (
-          <Marker
-            coordinate={{
-              latitude: currentLocation.coords.latitude,
-              longitude: currentLocation.coords.longitude,
-            }}
-            title={t('currentLocation', 'Current Location')}
-          />
-        )}
+        {/* Default marker for Tokyo */}
+        <Marker
+          coordinate={{
+            latitude: 35.6762,
+            longitude: 139.6503,
+          }}
+          title={t('tokyoStation', 'Tokyo Station')}
+          description={t('defaultLocation', 'Default location')}
+        />
       </MapView>
 
       {/* Floating Header */}
