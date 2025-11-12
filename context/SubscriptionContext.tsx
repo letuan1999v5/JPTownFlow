@@ -19,7 +19,7 @@ import {
   CREDIT_ALLOCATIONS
 } from '../types/credits';
 import {
-  getCreditBalance,
+  getCreditBalance as getOldCreditBalance,
   checkAndResetCredits,
   initializeCreditBalance
 } from '../services/creditsService';
@@ -28,6 +28,7 @@ import {
   changeSubscription,
   getActiveTier
 } from '../services/subscriptionService';
+import { getCreditBalance as getNewCreditBalance } from '../services/newCreditService';
 
 interface SubscriptionContextType {
   subscription: UserSubscription | null;
@@ -58,58 +59,45 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
       }
 
       try {
-        // First check and transition if subscription expired
-        await checkAndTransitionSubscription(user.uid);
+        // NEW SYSTEM: Read tier from users.credits.monthly.subscriptionTier
+        const userRef = doc(db, 'users', user.uid);
+        const userSnap = await getDoc(userRef);
 
-        // Load subscription from subscriptions collection
-        const subscriptionRef = doc(db, 'subscriptions', user.uid);
-        const subscriptionSnap = await getDoc(subscriptionRef);
-
-        let userSubscription: UserSubscription;
         let userTier: SubscriptionTier = 'FREE';
 
-        if (subscriptionSnap.exists()) {
-          const data = subscriptionSnap.data();
-          userSubscription = {
-            tier: data.tier || 'FREE',
-            startDate: data.startDate?.toDate() || null,
-            endDate: data.endDate?.toDate() || null,
-            pendingTier: data.pendingTier,
-            pendingStartDate: data.pendingStartDate?.toDate(),
-          };
-          userTier = getActiveTier(userSubscription);
-        } else {
-          // No subscription document, create default FREE
-          const now = new Date();
-          const endDate = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000); // 1 year
+        if (userSnap.exists()) {
+          const userData = userSnap.data();
+          const credits = userData.credits;
 
-          userSubscription = {
-            tier: 'FREE',
-            startDate: now,
-            endDate: endDate,
-          };
-
-          // Create subscription document
-          await setDoc(subscriptionRef, {
-            tier: 'FREE',
-            startDate: now,
-            endDate: endDate,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
+          // Check if new credit format (object)
+          if (credits && typeof credits === 'object' && credits.monthly) {
+            userTier = credits.monthly.subscriptionTier || 'FREE';
+          }
+          // Old format (number) or no credits - default to FREE
         }
 
+        // Set subscription state
+        const userSubscription: UserSubscription = {
+          tier: userTier,
+          startDate: null,
+          endDate: null,
+        };
         setSubscription(userSubscription);
 
-        // Load or initialize credit balance (use active tier)
-        let balance = await getCreditBalance(user.uid);
+        // Load credit balance using NEW credit service
+        let balance = await getNewCreditBalance(user.uid);
+
+        // Fallback to old service if new returns null
         if (!balance) {
-          // Initialize credit balance for new user
-          balance = await initializeCreditBalance(user.uid, userTier);
-        } else {
-          // Check and reset credits if needed (daily/monthly reset)
-          balance = await checkAndResetCredits(user.uid, userTier);
+          console.log('[SubscriptionContext] Falling back to old credit service');
+          balance = await getOldCreditBalance(user.uid);
         }
+
+        // If still no balance, initialize
+        if (!balance) {
+          balance = await initializeCreditBalance(user.uid, userTier);
+        }
+
         setCreditBalance(balance);
       } catch (error) {
         console.error('Error loading subscription:', error);
@@ -182,12 +170,22 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
   };
 
   const refreshCreditBalance = async () => {
-    if (!user || !subscription) return;
+    if (!user) return;
 
     try {
-      const activeTier = getActiveTier(subscription);
-      const balance = await checkAndResetCredits(user.uid, activeTier);
-      setCreditBalance(balance);
+      // Use NEW credit service to refresh
+      let balance = await getNewCreditBalance(user.uid);
+
+      // Fallback to old service if needed
+      if (!balance && subscription) {
+        const activeTier = getActiveTier(subscription);
+        balance = await checkAndResetCredits(user.uid, activeTier);
+      }
+
+      if (balance) {
+        setCreditBalance(balance);
+        console.log('[SubscriptionContext] Credit balance refreshed:', balance.total);
+      }
     } catch (error) {
       console.error('Error refreshing credit balance:', error);
     }
