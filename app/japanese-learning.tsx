@@ -23,7 +23,7 @@ import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import { CreditDisplay, CreditInfoModal, ModelSelector } from '../components/credits';
 import { AIModelTier } from '../types/credits';
-import { doc, setDoc, getDoc, Timestamp, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc, Timestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig';
 
 type JLPTLevel = 'N1' | 'N2' | 'N3' | 'N4' | 'N5';
@@ -329,12 +329,41 @@ export default function JapaneseLearningScreen() {
         {
           cacheId: cacheId || undefined,
           cacheCreatedAt: cacheCreatedAt || undefined,
-          onCacheCreated: (newCacheId: string, createdAt: Date) => {
+          onCacheCreated: async (newCacheId: string, createdAt: Date) => {
             setCacheId(newCacheId);
             setCacheCreatedAt(createdAt);
+
+            // Save cache info to Firestore immediately (don't wait for state update)
+            if (user && currentChatId) {
+              try {
+                const chatDocRef = doc(db, 'japaneseLearningChats', currentChatId);
+                await updateDoc(chatDocRef, {
+                  cacheId: newCacheId,
+                  cacheCreatedAt: Timestamp.fromDate(createdAt),
+                  lastUpdatedAt: Timestamp.now(),
+                });
+                console.log('✅ Cache info saved to Firestore:', newCacheId);
+              } catch (error) {
+                console.error('❌ Failed to save cache info to Firestore:', error);
+              }
+            }
           },
-          onCacheUpdated: (updatedCacheId: string, updatedAt: Date) => {
+          onCacheUpdated: async (updatedCacheId: string, updatedAt: Date) => {
             setCacheCreatedAt(updatedAt);
+
+            // Update cache timestamp in Firestore
+            if (user && currentChatId) {
+              try {
+                const chatDocRef = doc(db, 'japaneseLearningChats', currentChatId);
+                await updateDoc(chatDocRef, {
+                  cacheCreatedAt: Timestamp.fromDate(updatedAt),
+                  lastUpdatedAt: Timestamp.now(),
+                });
+                console.log('✅ Cache timestamp updated in Firestore');
+              } catch (error) {
+                console.error('❌ Failed to update cache timestamp:', error);
+              }
+            }
           },
         }
       );
