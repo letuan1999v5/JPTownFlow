@@ -3,15 +3,28 @@ import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
-import { MessageCircle, BookOpen, Globe, Lock, Languages } from 'lucide-react-native';
+import { MessageCircle, BookOpen, Globe, Lock, Languages, MapPin, FileText, Video } from 'lucide-react-native';
 import { useAuth } from '../../context/AuthContext';
+
+type SubscriptionTier = 'FREE' | 'PRO' | 'ULTRA';
+
+interface Feature {
+  id: string;
+  icon: any;
+  titleKey: string;
+  descKey: string;
+  color: string;
+  route: string;
+  badge?: string;
+  requiredTier?: SubscriptionTier;
+}
 
 export default function AIAssistantScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const { user, subscription } = useAuth();
 
-  const handleFeaturePress = (route: string) => {
+  const handleFeaturePress = (feature: Feature) => {
     if (!user) {
       Alert.alert(
         t('loginRequired', 'Login Required'),
@@ -21,19 +34,48 @@ export default function AIAssistantScreen() {
       return;
     }
 
-    // Allow all logged-in users (including FREE) to access AI features
-    // Credit system will handle usage limits
-    router.push(route as any);
+    // Check subscription tier requirement
+    const userTier = subscription || 'FREE';
+    const requiredTier = feature.requiredTier || 'FREE';
+
+    // Tier hierarchy: FREE < PRO < ULTRA
+    const tierLevel: Record<SubscriptionTier, number> = {
+      FREE: 0,
+      PRO: 1,
+      ULTRA: 2,
+    };
+
+    if (tierLevel[userTier] < tierLevel[requiredTier]) {
+      // User doesn't have required tier
+      const tierName = requiredTier === 'ULTRA' ? 'ULTRA' : 'PRO';
+      Alert.alert(
+        t(`${tierName.toLowerCase()}Required`, `${tierName} Subscription Required`),
+        t(`${tierName.toLowerCase()}RequiredDesc`, `This feature requires ${tierName} subscription. Would you like to upgrade?`),
+        [
+          { text: t('cancel', 'Cancel'), style: 'cancel' },
+          {
+            text: t('upgrade', 'Upgrade'),
+            onPress: () => router.push('/(tabs)/premium')
+          },
+        ]
+      );
+      return;
+    }
+
+    // User has required tier, allow access
+    router.push(feature.route as any);
   };
 
-  const features = [
+  const features: Feature[] = [
     {
-      id: 'chat',
-      icon: MessageCircle,
-      titleKey: 'aiChatTitle',
-      descKey: 'aiChatDesc',
-      color: '#2563EB',
-      route: '/ai-chats-list',
+      id: 'translator',
+      icon: Languages,
+      titleKey: 'aiTranslatorTitle',
+      descKey: 'aiTranslatorDesc',
+      color: '#8B5CF6',
+      route: '/ai-translator',
+      badge: 'FREE',
+      requiredTier: 'FREE',
     },
     {
       id: 'japanese',
@@ -42,14 +84,28 @@ export default function AIAssistantScreen() {
       descKey: 'japaneseLearnDesc',
       color: '#10B981',
       route: '/japanese-chats-list',
+      badge: 'FREE',
+      requiredTier: 'FREE',
     },
     {
-      id: 'translator',
-      icon: Languages,
-      titleKey: 'aiTranslatorTitle',
-      descKey: 'aiTranslatorDesc',
-      color: '#8B5CF6',
-      route: '/ai-translator',
+      id: 'chat',
+      icon: MessageCircle,
+      titleKey: 'aiChatTitle',
+      descKey: 'aiChatDesc',
+      color: '#2563EB',
+      route: '/ai-chats-list',
+      badge: 'FREE',
+      requiredTier: 'FREE',
+    },
+    {
+      id: 'subs',
+      icon: Video,
+      titleKey: 'aiSubsTitle',
+      descKey: 'aiSubsDesc',
+      color: '#EF4444',
+      route: '/ai-subs',
+      badge: 'FREE',
+      requiredTier: 'FREE',
     },
     {
       id: 'browser',
@@ -58,6 +114,28 @@ export default function AIAssistantScreen() {
       descKey: 'aiBrowserDesc',
       color: '#F59E0B',
       route: '/web-browser',
+      badge: 'PRO',
+      requiredTier: 'PRO',
+    },
+    {
+      id: 'document',
+      icon: FileText,
+      titleKey: 'aiDocumentAnalysis',
+      descKey: 'aiDocumentAnalysisDesc',
+      color: '#10B981',
+      route: '/ai-document-analysis',
+      badge: 'ULTRA',
+      requiredTier: 'ULTRA',
+    },
+    {
+      id: 'map',
+      icon: MapPin,
+      titleKey: 'aiMap',
+      descKey: 'aiMapDescription',
+      color: '#8B5CF6',
+      route: '/ai-map',
+      badge: 'ULTRA',
+      requiredTier: 'ULTRA',
     },
   ];
 
@@ -72,24 +150,49 @@ export default function AIAssistantScreen() {
         {features.map((feature) => {
           const Icon = feature.icon;
           const isLocked = !user;
+          const userTier = subscription || 'FREE';
+          const requiredTier = feature.requiredTier || 'FREE';
+
+          const tierLevel: Record<SubscriptionTier, number> = {
+            FREE: 0,
+            PRO: 1,
+            ULTRA: 2,
+          };
+
+          const needsUpgrade = tierLevel[userTier] < tierLevel[requiredTier];
+
+          // Badge colors
+          const badgeColors: Record<string, string> = {
+            FREE: '#10B981',
+            PRO: '#F59E0B',
+            ULTRA: '#8B5CF6',
+          };
+
           return (
             <TouchableOpacity
               key={feature.id}
               style={[
                 styles.featureCard,
                 { borderColor: feature.color },
-                isLocked && styles.lockedCard,
+                (isLocked || needsUpgrade) && styles.lockedCard,
               ]}
-              onPress={() => handleFeaturePress(feature.route)}
+              onPress={() => handleFeaturePress(feature)}
             >
               <View style={[styles.iconContainer, { backgroundColor: feature.color + '20' }]}>
                 <Icon size={40} color={feature.color} />
               </View>
               <View style={styles.featureContent}>
-                <Text style={styles.featureTitle}>
-                  {t(feature.titleKey, feature.titleKey)}
-                  {isLocked && ' 🔒'}
-                </Text>
+                <View style={styles.titleRow}>
+                  <Text style={styles.featureTitle}>
+                    {t(feature.titleKey, feature.titleKey)}
+                    {(isLocked || needsUpgrade) && ' 🔒'}
+                  </Text>
+                  {feature.badge && (
+                    <View style={[styles.badge, { backgroundColor: badgeColors[feature.badge] || '#8B5CF6' }]}>
+                      <Text style={styles.badgeText}>{feature.badge}</Text>
+                    </View>
+                  )}
+                </View>
                 <Text style={styles.featureDesc}>{t(feature.descKey, feature.descKey)}</Text>
               </View>
               <Text style={[styles.arrow, { color: feature.color }]}>→</Text>
@@ -153,11 +256,26 @@ const styles = StyleSheet.create({
   featureContent: {
     flex: 1,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
   featureTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#1F2937',
-    marginBottom: 4,
+  },
+  badge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  badgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   featureDesc: {
     fontSize: 14,

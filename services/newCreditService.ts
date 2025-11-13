@@ -617,16 +617,25 @@ export async function grantMonthlyCredits(
 
     const credits = userDoc.data()?.credits as UserCredits;
     const amount = MONTHLY_CREDITS[tier];
+
+    if (!amount) {
+      return {
+        success: false,
+        message: `Invalid subscription tier: ${tier}`,
+      };
+    }
+
     const now = Timestamp.now();
     const resetAt = new Timestamp(
       now.seconds + 30 * 24 * 60 * 60, // 30 days
       now.nanoseconds
     );
 
+    // Safe access with default values
     const balanceBefore: CreditBalance = {
-      trial: credits.trial.amount,
-      monthly: credits.monthly.amount,
-      purchase: credits.purchase.amount,
+      trial: credits?.trial?.amount || 0,
+      monthly: credits?.monthly?.amount || 0,
+      purchase: credits?.purchase?.amount || 0,
       total: calculateTotalCredits(credits),
     };
 
@@ -634,14 +643,14 @@ export async function grantMonthlyCredits(
       'credits.monthly.amount': amount,
       'credits.monthly.resetAt': resetAt,
       'credits.monthly.subscriptionTier': tier,
-      'credits.total': credits.trial.amount + amount + credits.purchase.amount,
+      'credits.total': (credits?.trial?.amount || 0) + amount + (credits?.purchase?.amount || 0),
     });
 
     const balanceAfter: CreditBalance = {
-      trial: credits.trial.amount,
+      trial: credits?.trial?.amount || 0,
       monthly: amount,
-      purchase: credits.purchase.amount,
-      total: credits.trial.amount + amount + credits.purchase.amount,
+      purchase: credits?.purchase?.amount || 0,
+      total: (credits?.trial?.amount || 0) + amount + (credits?.purchase?.amount || 0),
     };
 
     await logCreditTransaction({

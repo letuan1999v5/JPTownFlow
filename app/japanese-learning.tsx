@@ -18,13 +18,12 @@ import {
   View,
 } from 'react-native';
 import TranslatableText, { TranslatableWord } from '../components/common/TranslatableText';
-import { CreditDisplay, CreditInfoModal, ModelSelector } from '../components/credits';
+import { CreditDisplay, CreditInfoModal } from '../components/credits';
 import SaveToNotebookModal from '../components/vocabulary/SaveToNotebookModal';
 import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import { db } from '../firebase/firebaseConfig';
 import { chatJapaneseLearning, ChatMessage, TokenUsage } from '../services/geminiService';
-import { AIModelTier } from '../types/credits';
 
 type JLPTLevel = 'N1' | 'N2' | 'N3' | 'N4' | 'N5';
 type TranslationLanguage = 'ja' | 'en' | 'vi' | 'zh' | 'ko' | 'pt' | 'es' | 'fil' | 'th' | 'id';
@@ -46,7 +45,6 @@ export default function JapaneseLearningScreen() {
   const [translationLanguage, setTranslationLanguage] = useState<TranslationLanguage>(
     i18n.language as TranslationLanguage
   );
-  const [selectedModel, setSelectedModel] = useState<AIModelTier>('lite');
   const [showLevelModal, setShowLevelModal] = useState(false);
   const [showCreditInfo, setShowCreditInfo] = useState(false);
   const [isImportant, setIsImportant] = useState(false);
@@ -323,7 +321,7 @@ export default function JapaneseLearningScreen() {
         [...messages, userMessage],
         jlptLevel,
         translationLanguage,
-        selectedModel,
+        'lite', // Japanese Learning uses Lite 2.5 model
         onTokenUsage,
         undefined, // groundingOptions
         {
@@ -502,7 +500,6 @@ export default function JapaneseLearningScreen() {
       {/* Credit Display */}
       <View style={{ padding: 16, paddingBottom: 8 }}>
         <CreditDisplay
-          selectedModel={selectedModel}
           onInfoPress={() => setShowCreditInfo(true)}
           showInfoIcon={true}
         />
@@ -575,12 +572,6 @@ export default function JapaneseLearningScreen() {
             <Text style={styles.modalTitle}>{t('chatSettings', 'Chat Settings')}</Text>
 
             <ScrollView style={styles.modalScrollView} showsVerticalScrollIndicator={false}>
-              {/* AI Model Selector */}
-              <ModelSelector
-                selectedModel={selectedModel}
-                onModelChange={setSelectedModel}
-              />
-
               {/* JLPT Level Section */}
               <Text style={styles.sectionTitle}>{t('jlptLevel', 'JLPT Level')}</Text>
               {levels.map((level) => (

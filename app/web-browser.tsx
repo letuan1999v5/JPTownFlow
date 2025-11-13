@@ -29,8 +29,7 @@ import { Alert, Modal } from 'react-native';
 import { askAboutWebContent, TokenUsage } from '../services/geminiService';
 import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
-import { CreditDisplay, CreditInfoModal, ModelSelector } from '../components/credits';
-import { AIModelTier } from '../types/credits';
+import { CreditDisplay, CreditInfoModal } from '../components/credits';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CHAT_MIN_HEIGHT = SCREEN_HEIGHT * 0.15; // 15%
@@ -60,7 +59,6 @@ export default function WebBrowserScreen() {
 
   // Chat states
   const [chatExpanded, setChatExpanded] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<AIModelTier>('lite');
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showCreditInfo, setShowCreditInfo] = useState(false);
   const { creditBalance, refreshCreditBalance } = useSubscription();
@@ -270,7 +268,7 @@ export default function WebBrowserScreen() {
         content,
         userMessage.content,
         i18n.language,
-        selectedModel,
+        'flash', // AI Browser uses Flash 2.5 model
         onTokenUsage
       );
 
@@ -401,7 +399,6 @@ export default function WebBrowserScreen() {
       {/* Credit Display */}
       <View style={{ padding: 16, paddingBottom: 8, backgroundColor: '#FFFFFF' }}>
         <CreditDisplay
-          selectedModel={selectedModel}
           onInfoPress={() => setShowCreditInfo(true)}
           showInfoIcon={true}
         />
@@ -521,11 +518,7 @@ export default function WebBrowserScreen() {
             <Text style={styles.modalTitle}>{t('settings', 'Settings')}</Text>
 
             <ScrollView style={styles.modalScrollView} showsVerticalScrollIndicator={false}>
-              {/* AI Model Selector */}
-              <ModelSelector
-                selectedModel={selectedModel}
-                onModelChange={setSelectedModel}
-              />
+              {/* Settings content can be added here in the future */}
             </ScrollView>
 
             <TouchableOpacity

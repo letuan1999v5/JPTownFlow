@@ -19,8 +19,7 @@ import { ArrowLeft, Send, Languages, Settings } from 'lucide-react-native';
 import { translateJapanese, TokenUsage } from '../services/geminiService';
 import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
-import { CreditDisplay, CreditInfoModal, ModelSelector } from '../components/credits';
-import { AIModelTier } from '../types/credits';
+import { CreditDisplay, CreditInfoModal } from '../components/credits';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -44,7 +43,6 @@ export default function AITranslatorScreen() {
   ]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<AIModelTier>('lite');
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showCreditInfo, setShowCreditInfo] = useState(false);
   const { creditBalance, refreshCreditBalance } = useSubscription();
@@ -87,7 +85,7 @@ export default function AITranslatorScreen() {
         userTier,
         userMessage.content,
         i18n.language,
-        selectedModel,
+        'lite', // AI Translator uses Lite 2.5 model
         onTokenUsage
       );
 
@@ -185,7 +183,6 @@ export default function AITranslatorScreen() {
       {/* Credit Display */}
       <View style={{ padding: 16, paddingBottom: 8 }}>
         <CreditDisplay
-          selectedModel={selectedModel}
           onInfoPress={() => setShowCreditInfo(true)}
           showInfoIcon={true}
         />
@@ -255,11 +252,7 @@ export default function AITranslatorScreen() {
             <Text style={styles.modalTitle}>{t('settings', 'Settings')}</Text>
 
             <ScrollView style={styles.modalScrollView} showsVerticalScrollIndicator={false}>
-              {/* AI Model Selector */}
-              <ModelSelector
-                selectedModel={selectedModel}
-                onModelChange={setSelectedModel}
-              />
+              {/* Settings content can be added here in the future */}
             </ScrollView>
 
             <TouchableOpacity

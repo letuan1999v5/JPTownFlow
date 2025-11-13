@@ -45,7 +45,14 @@ export default function MoreScreen() {
           >
             <Text style={styles.menuIcon}>{item.icon}</Text>
             <View style={styles.menuTextContainer}>
-              <Text style={styles.menuTitle}>{item.title}</Text>
+              <View style={styles.titleRow}>
+                <Text style={styles.menuTitle}>{item.title}</Text>
+                {item.badge && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{item.badge}</Text>
+                  </View>
+                )}
+              </View>
               <Text style={styles.menuDescription}>{item.description}</Text>
             </View>
             <Text style={styles.menuArrow}>→</Text>
@@ -103,11 +110,27 @@ const styles = StyleSheet.create({
   menuTextContainer: {
     flex: 1,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 2,
+  },
   menuTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#1F2937',
-    marginBottom: 2,
+  },
+  badge: {
+    backgroundColor: '#8B5CF6',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  badgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   menuDescription: {
     fontSize: 13,
