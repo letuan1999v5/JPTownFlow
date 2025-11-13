@@ -10,11 +10,12 @@ import {
   TouchableOpacity,
   Platform,
   Share,
+  ScrollView,
+  Linking,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Download, Share2 } from 'lucide-react-native';
+import { ArrowLeft, Download, Share2, ExternalLink, PlayCircle } from 'lucide-react-native';
 import { useAuth } from '../context/AuthContext';
-import SubtitleVideoPlayer from '../components/video/SubtitleVideoPlayer';
 import { getVideoByHashId, updateVideoHistoryAccess, formatToSRT } from '../services/aiSubsService';
 import { VideoMetadata, SubtitleCue } from '../types/subtitle';
 import * as FileSystem from 'expo-file-system';
@@ -25,6 +26,14 @@ try {
   Sharing = require('expo-sharing');
 } catch (error) {
   console.log('expo-sharing not available, using fallback');
+}
+
+// Try to import video player (may fail if not rebuilt)
+let SubtitleVideoPlayer: any = null;
+try {
+  SubtitleVideoPlayer = require('../components/video/SubtitleVideoPlayer').default;
+} catch (error) {
+  console.log('react-native-video not available, using fallback UI');
 }
 
 export default function AISubsPlayerScreen() {
@@ -227,22 +236,61 @@ export default function AISubsPlayerScreen() {
         </View>
       </View>
 
-      {/* Video Player */}
-      <SubtitleVideoPlayer
-        videoUrl={videoUrl}
-        subtitles={subtitles}
-        onError={(error) => {
-          console.error('Video player error:', error);
-          Alert.alert(
-            t('playbackError', 'Playback Error'),
-            t('videoPlaybackFailed', 'Failed to play video. Please try again.')
-          );
-        }}
-        onEnd={() => {
-          // Video ended
-          console.log('Video ended');
-        }}
-      />
+      {/* Video Player or Fallback UI */}
+      {SubtitleVideoPlayer ? (
+        <>
+          <SubtitleVideoPlayer
+            videoUrl={videoUrl}
+            subtitles={subtitles}
+            onError={(error) => {
+              console.error('Video player error:', error);
+              Alert.alert(
+                t('playbackError', 'Playback Error'),
+                t('videoPlaybackFailed', 'Failed to play video. Please try again.')
+              );
+            }}
+            onEnd={() => {
+              console.log('Video ended');
+            }}
+          />
+        </>
+      ) : (
+        <>
+          {/* Fallback: Show subtitles list without video */}
+          <View style={styles.fallbackNotice}>
+            <PlayCircle size={40} color="#EF4444" />
+            <Text style={styles.fallbackTitle}>
+              {t('videoPlayerUnavailable', 'Video Player Unavailable')}
+            </Text>
+            <Text style={styles.fallbackText}>
+              {t('viewSubtitlesOnly', 'Viewing translated subtitles only. Rebuild app to enable video playback.')}
+            </Text>
+            <TouchableOpacity
+              style={styles.openYouTubeButton}
+              onPress={() => videoData.youtubeUrl && Linking.openURL(videoData.youtubeUrl)}
+            >
+              <ExternalLink size={16} color="#FFFFFF" />
+              <Text style={styles.openYouTubeText}>
+                {t('watchOnYouTube', 'Watch on YouTube')}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.subtitlesContainer} contentContainerStyle={styles.subtitlesContent}>
+            {subtitles.map((subtitle) => (
+              <View key={subtitle.index} style={styles.subtitleItem}>
+                <Text style={styles.subtitleIndex}>#{subtitle.index}</Text>
+                <View style={styles.subtitleContent}>
+                  <Text style={styles.subtitleTime}>
+                    {subtitle.startTime} → {subtitle.endTime}
+                  </Text>
+                  <Text style={styles.subtitleText}>{subtitle.text}</Text>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+        </>
+      )}
 
       {/* Info Footer */}
       <View style={styles.footer}>
@@ -330,6 +378,84 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: 'row',
     gap: 8,
+  },
+  fallbackNotice: {
+    backgroundColor: '#1F2937',
+    margin: 16,
+    marginTop: Platform.OS === 'ios' ? 100 : 80,
+    padding: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#374151',
+  },
+  fallbackTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  fallbackText: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  openYouTubeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    gap: 8,
+  },
+  openYouTubeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  subtitlesContainer: {
+    flex: 1,
+    backgroundColor: '#111827',
+  },
+  subtitlesContent: {
+    padding: 16,
+    paddingTop: 8,
+    paddingBottom: 80,
+  },
+  subtitleItem: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    backgroundColor: '#1F2937',
+    borderRadius: 8,
+    padding: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#EF4444',
+  },
+  subtitleIndex: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
+    width: 40,
+    marginRight: 12,
+  },
+  subtitleContent: {
+    flex: 1,
+  },
+  subtitleTime: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginBottom: 4,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  subtitleText: {
+    fontSize: 15,
+    color: '#FFFFFF',
+    lineHeight: 22,
   },
   footer: {
     flexDirection: 'row',
