@@ -702,26 +702,26 @@ export async function grantPurchaseCredits(
     const credits = userDoc.data()?.credits as UserCredits;
 
     const balanceBefore: CreditBalance = {
-      trial: credits.trial.amount,
-      monthly: credits.monthly.amount,
-      purchase: credits.purchase.amount,
+      trial: credits?.trial?.amount || 0,
+      monthly: credits?.monthly?.amount || 0,
+      purchase: credits?.purchase?.amount || 0,
       total: calculateTotalCredits(credits),
     };
 
-    const newPurchaseAmount = credits.purchase.amount + amount;
-    const newTotalPurchased = credits.purchase.totalPurchased + amount;
+    const newPurchaseAmount = (credits?.purchase?.amount || 0) + amount;
+    const newTotalPurchased = (credits?.purchase?.totalPurchased || 0) + amount;
 
     await updateDoc(userDocRef, {
       'credits.purchase.amount': newPurchaseAmount,
       'credits.purchase.totalPurchased': newTotalPurchased,
-      'credits.total': credits.trial.amount + credits.monthly.amount + newPurchaseAmount,
+      'credits.total': (credits?.trial?.amount || 0) + (credits?.monthly?.amount || 0) + newPurchaseAmount,
     });
 
     const balanceAfter: CreditBalance = {
-      trial: credits.trial.amount,
-      monthly: credits.monthly.amount,
+      trial: credits?.trial?.amount || 0,
+      monthly: credits?.monthly?.amount || 0,
       purchase: newPurchaseAmount,
-      total: credits.trial.amount + credits.monthly.amount + newPurchaseAmount,
+      total: (credits?.trial?.amount || 0) + (credits?.monthly?.amount || 0) + newPurchaseAmount,
     };
 
     await logCreditTransaction({
