@@ -55,6 +55,43 @@ const LANGUAGE_NAMES: Record<string, string> = {
 };
 
 /**
+ * Retry helper with exponential backoff for rate limit errors
+ */
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries = 3,
+  initialDelay = 1000
+): Promise<T> {
+  let lastError: any;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+
+      // Check if it's a rate limit error (429)
+      const isRateLimitError =
+        error.status === 429 ||
+        error.message?.includes('429') ||
+        error.message?.includes('Resource exhausted');
+
+      if (!isRateLimitError || attempt === maxRetries - 1) {
+        throw error;
+      }
+
+      // Calculate delay with exponential backoff
+      const delay = initialDelay * Math.pow(2, attempt);
+      console.log(`Rate limit hit (429), retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})...`);
+
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  throw lastError;
+}
+
+/**
  * Extract YouTube video ID from URL
  */
 function extractYouTubeVideoId(url: string): string | null {
@@ -122,7 +159,12 @@ Let's begin with a story.
 
 Generate transcript:`;
 
-    const result = await model.generateContent(prompt);
+    // Use retry logic for rate limit errors
+    const result = await retryWithBackoff(
+      () => model.generateContent(prompt),
+      3, // max 3 retries
+      2000 // initial delay 2 seconds
+    );
     const transcriptText = result.response.text().trim();
 
     // Split into lines and create subtitle cues
@@ -186,7 +228,12 @@ ${subtitleText}
 
 Translated subtitles:`;
 
-  const result = await model.generateContent(prompt);
+  // Use retry logic for rate limit errors
+  const result = await retryWithBackoff(
+    () => model.generateContent(prompt),
+    3, // max 3 retries
+    2000 // initial delay 2 seconds
+  );
   const response = result.response;
   const translatedText = response.text();
 
