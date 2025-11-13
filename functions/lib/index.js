@@ -51,6 +51,8 @@ admin.initializeApp();
 __exportStar(require("./creditFunctions"), exports);
 // Export migration functions
 __exportStar(require("./migrationFunctions"), exports);
+// Export AI Subs functions
+__exportStar(require("./aiSubsFunctions"), exports);
 // Initialize CORS
 const corsHandler = (0, cors_1.default)({ origin: true });
 // Cache management constants
