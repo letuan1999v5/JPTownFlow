@@ -9,6 +9,7 @@ import {
   Alert,
   TouchableOpacity,
   Platform,
+  Share,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Download, Share2 } from 'lucide-react-native';
@@ -17,7 +18,14 @@ import SubtitleVideoPlayer from '../components/video/SubtitleVideoPlayer';
 import { getVideoByHashId, updateVideoHistoryAccess, formatToSRT } from '../services/aiSubsService';
 import { VideoMetadata, SubtitleCue } from '../types/subtitle';
 import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
+
+// Optional import for expo-sharing (requires rebuild)
+let Sharing: any = null;
+try {
+  Sharing = require('expo-sharing');
+} catch (error) {
+  console.log('expo-sharing not available, using fallback');
+}
 
 export default function AISubsPlayerScreen() {
   const { t } = useTranslation();
@@ -114,19 +122,23 @@ export default function AISubsPlayerScreen() {
         encoding: FileSystem.EncodingType.UTF8,
       });
 
-      // Check if sharing is available
-      const canShare = await Sharing.isAvailableAsync();
-      if (canShare) {
-        await Sharing.shareAsync(fileUri, {
-          mimeType: 'text/plain',
-          dialogTitle: t('downloadSubtitles', 'Download Subtitles'),
-        });
-      } else {
-        Alert.alert(
-          t('success', 'Success'),
-          t('subtitlesSaved', `Subtitles saved to: ${fileUri}`)
-        );
+      // Check if expo-sharing is available
+      if (Sharing) {
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(fileUri, {
+            mimeType: 'text/plain',
+            dialogTitle: t('downloadSubtitles', 'Download Subtitles'),
+          });
+          return;
+        }
       }
+
+      // Fallback: Just show save location
+      Alert.alert(
+        t('success', 'Success'),
+        t('subtitlesSaved', `Subtitles saved to: ${fileUri}\n\n(Rebuild app with 'npx expo run:android' to enable sharing feature)`)
+      );
     } catch (error: any) {
       console.error('Error downloading subtitles:', error);
       Alert.alert(
@@ -143,12 +155,21 @@ export default function AISubsPlayerScreen() {
       const shareMessage = `${videoData.videoTitle}\n\nWatch with ${targetLanguage.toUpperCase()} subtitles on JPTownFlow!`;
 
       if (videoData.videoSource === 'youtube' && videoData.youtubeUrl) {
-        await Sharing.shareAsync(videoData.youtubeUrl, {
-          dialogTitle: shareMessage,
+        // Use React Native's built-in Share API (works without rebuild)
+        await Share.share({
+          message: `${shareMessage}\n\n${videoData.youtubeUrl}`,
+          url: videoData.youtubeUrl, // iOS only
+          title: videoData.videoTitle,
         });
       }
     } catch (error: any) {
       console.error('Error sharing:', error);
+      if (error.message !== 'User did not share') {
+        Alert.alert(
+          t('error', 'Error'),
+          t('failedToShare', 'Failed to share video')
+        );
+      }
     }
   };
 
