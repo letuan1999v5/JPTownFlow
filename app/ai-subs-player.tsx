@@ -28,12 +28,19 @@ try {
   console.log('expo-sharing not available, using fallback');
 }
 
-// Try to import video player (may fail if not rebuilt)
+// Check if react-native-video is available FIRST
 let SubtitleVideoPlayer: any = null;
+let hasVideoPlayer = false;
 try {
+  // First check if react-native-video module exists
+  require('react-native-video');
+  // If successful, then import the player component
   SubtitleVideoPlayer = require('../components/video/SubtitleVideoPlayer').default;
+  hasVideoPlayer = true;
+  console.log('✅ react-native-video available, using video player');
 } catch (error) {
-  console.log('react-native-video not available, using fallback UI');
+  console.log('⚠️ react-native-video not available, using fallback subtitle viewer');
+  hasVideoPlayer = false;
 }
 
 export default function AISubsPlayerScreen() {
