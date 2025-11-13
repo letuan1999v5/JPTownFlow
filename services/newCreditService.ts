@@ -209,21 +209,21 @@ export async function deductCredits(
     let purchaseUsed = 0;
 
     // 1. Deduct from trial first (expires soonest)
-    if (remaining > 0 && freshCredits.trial.amount > 0) {
+    if (remaining > 0 && freshCredits?.trial?.amount && freshCredits.trial.amount > 0) {
       const deductFromTrial = Math.min(remaining, freshCredits.trial.amount);
       trialUsed = deductFromTrial;
       remaining -= deductFromTrial;
     }
 
     // 2. Deduct from monthly (resets monthly)
-    if (remaining > 0 && freshCredits.monthly.amount > 0) {
+    if (remaining > 0 && freshCredits?.monthly?.amount && freshCredits.monthly.amount > 0) {
       const deductFromMonthly = Math.min(remaining, freshCredits.monthly.amount);
       monthlyUsed = deductFromMonthly;
       remaining -= deductFromMonthly;
     }
 
     // 3. Deduct from purchase (never expires, use last)
-    if (remaining > 0 && freshCredits.purchase.amount > 0) {
+    if (remaining > 0 && freshCredits?.purchase?.amount && freshCredits.purchase.amount > 0) {
       const deductFromPurchase = Math.min(remaining, freshCredits.purchase.amount);
       purchaseUsed = deductFromPurchase;
       remaining -= deductFromPurchase;
@@ -391,6 +391,14 @@ export async function grantSecondTrialCredits(userId: string): Promise<GrantResu
     const antifraud = userData.antifraud;
     const now = Timestamp.now();
 
+    // Check if credits structure exists
+    if (!credits || !credits.trial || !credits.monthly || !credits.purchase) {
+      return {
+        success: false,
+        message: 'Invalid credit structure',
+      };
+    }
+
     // Check eligibility
     if (credits.monthly.subscriptionTier !== 'FREE') {
       return {
@@ -428,7 +436,7 @@ export async function grantSecondTrialCredits(userId: string): Promise<GrantResu
     }
 
     // Check how much they had remaining when trial expired
-    const remainingAtExpiry = credits.trial.amount;
+    const remainingAtExpiry = credits.trial.amount || 0;
     const grantAmount = remainingAtExpiry >= TRIAL_CONFIG.SECOND_GRANT_THRESHOLD
       ? TRIAL_CONFIG.SECOND_GRANT_HIGH
       : TRIAL_CONFIG.SECOND_GRANT_LOW;
@@ -439,9 +447,9 @@ export async function grantSecondTrialCredits(userId: string): Promise<GrantResu
     );
 
     const balanceBefore: CreditBalance = {
-      trial: credits.trial.amount,
-      monthly: credits.monthly.amount,
-      purchase: credits.purchase.amount,
+      trial: credits.trial.amount || 0,
+      monthly: credits.monthly.amount || 0,
+      purchase: credits.purchase.amount || 0,
       total: calculateTotalCredits(credits),
     };
 
@@ -450,15 +458,15 @@ export async function grantSecondTrialCredits(userId: string): Promise<GrantResu
       'credits.trial.grantedAt': now,
       'credits.trial.expiresAt': expiresAt,
       'credits.trial.secondGrantClaimed': true,
-      'credits.total': grantAmount + credits.monthly.amount + credits.purchase.amount,
+      'credits.total': grantAmount + (credits.monthly.amount || 0) + (credits.purchase.amount || 0),
       'antifraud.credit_status': 'SECOND_GRANT_CLAIMED',
     });
 
     const balanceAfter: CreditBalance = {
       trial: grantAmount,
-      monthly: credits.monthly.amount,
-      purchase: credits.purchase.amount,
-      total: grantAmount + credits.monthly.amount + credits.purchase.amount,
+      monthly: credits.monthly.amount || 0,
+      purchase: credits.purchase.amount || 0,
+      total: grantAmount + (credits.monthly.amount || 0) + (credits.purchase.amount || 0),
     };
 
     await logCreditTransaction({
@@ -508,6 +516,14 @@ export async function grantAdWatchCredits(userId: string): Promise<GrantResult> 
     const credits = userData.credits as UserCredits;
     const antifraud = userData.antifraud;
 
+    // Check if credits structure exists
+    if (!credits || !credits.trial || !credits.monthly || !credits.purchase || !credits.adWatch) {
+      return {
+        success: false,
+        message: 'Invalid credit structure',
+      };
+    }
+
     // Check eligibility
     if (credits.monthly.subscriptionTier !== 'FREE') {
       return {
@@ -539,18 +555,18 @@ export async function grantAdWatchCredits(userId: string): Promise<GrantResult> 
     }
 
     const balanceBefore: CreditBalance = {
-      trial: credits.trial.amount,
-      monthly: credits.monthly.amount,
-      purchase: credits.purchase.amount,
+      trial: credits.trial.amount || 0,
+      monthly: credits.monthly.amount || 0,
+      purchase: credits.purchase.amount || 0,
       total: totalCredits,
     };
 
     const now = Timestamp.now();
-    const newTrialAmount = credits.trial.amount + TRIAL_CONFIG.AD_WATCH_BONUS;
+    const newTrialAmount = (credits.trial.amount || 0) + TRIAL_CONFIG.AD_WATCH_BONUS;
 
     await updateDoc(userDocRef, {
       'credits.trial.amount': newTrialAmount,
-      'credits.total': newTrialAmount + credits.monthly.amount + credits.purchase.amount,
+      'credits.total': newTrialAmount + (credits.monthly.amount || 0) + (credits.purchase.amount || 0),
       'credits.adWatch.claimed': true,
       'credits.adWatch.claimedAt': now,
       'antifraud.credit_status': 'AD_WATCH_CLAIMED',
@@ -558,9 +574,9 @@ export async function grantAdWatchCredits(userId: string): Promise<GrantResult> 
 
     const balanceAfter: CreditBalance = {
       trial: newTrialAmount,
-      monthly: credits.monthly.amount,
-      purchase: credits.purchase.amount,
-      total: newTrialAmount + credits.monthly.amount + credits.purchase.amount,
+      monthly: credits.monthly.amount || 0,
+      purchase: credits.purchase.amount || 0,
+      total: newTrialAmount + (credits.monthly.amount || 0) + (credits.purchase.amount || 0),
     };
 
     await logCreditTransaction({
