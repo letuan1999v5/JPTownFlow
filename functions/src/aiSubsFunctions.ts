@@ -2,7 +2,8 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import cors from 'cors';
-import { YoutubeTranscript } from 'youtube-transcript';
+// @ts-ignore - youtube-captions-scraper doesn't have type definitions
+import { getSubtitles } from 'youtube-captions-scraper';
 
 // Initialize CORS
 const corsHandler = cors({ origin: true });
@@ -144,47 +145,51 @@ async function fetchYouTubeTranscript(videoId: string, videoUrl: string): Promis
   try {
     console.log(`Fetching transcript for video: ${videoId}`);
 
-    // Fetch transcript from YouTube
-    // This will get the auto-generated or manual captions
-    const transcriptItems = await YoutubeTranscript.fetchTranscript(videoId, {
-      lang: 'en', // Try English first
-    });
-
-    if (!transcriptItems || transcriptItems.length === 0) {
-      throw new Error('No transcript available for this video');
-    }
-
-    // Convert YouTube transcript format to SubtitleCue format
-    const subtitles: SubtitleCue[] = transcriptItems.map((item, index) => {
-      const startMs = Math.floor(item.offset);
-      const endMs = Math.floor(item.offset + item.duration);
-
-      return {
-        index: index + 1,
-        startTime: millisecondsToSRT(startMs),
-        endTime: millisecondsToSRT(endMs),
-        text: item.text.trim(),
-      };
-    });
-
-    console.log(`Fetched ${subtitles.length} subtitle segments from YouTube`);
-    return subtitles;
-
-  } catch (error: any) {
-    console.error('Error fetching YouTube transcript:', error);
-
-    // If English transcript not found, try to fetch any available language
+    // Try English first
     try {
-      console.log('Trying to fetch transcript in any available language...');
-      const transcriptItems = await YoutubeTranscript.fetchTranscript(videoId);
+      const captions = await getSubtitles({
+        videoID: videoId,
+        lang: 'en', // Try English first
+      });
 
-      if (!transcriptItems || transcriptItems.length === 0) {
-        throw new Error('No transcript available');
+      if (!captions || captions.length === 0) {
+        throw new Error('No captions found');
       }
 
-      const subtitles: SubtitleCue[] = transcriptItems.map((item, index) => {
-        const startMs = Math.floor(item.offset);
-        const endMs = Math.floor(item.offset + item.duration);
+      // Convert to SubtitleCue format
+      const subtitles: SubtitleCue[] = captions.map((item: any, index: number) => {
+        // youtube-captions-scraper returns start/dur in seconds, convert to ms
+        const startMs = Math.floor(parseFloat(item.start) * 1000);
+        const durationMs = Math.floor(parseFloat(item.dur) * 1000);
+        const endMs = startMs + durationMs;
+
+        return {
+          index: index + 1,
+          startTime: millisecondsToSRT(startMs),
+          endTime: millisecondsToSRT(endMs),
+          text: item.text.trim(),
+        };
+      });
+
+      console.log(`Fetched ${subtitles.length} subtitle segments from YouTube (English)`);
+      return subtitles;
+    } catch (englishError: any) {
+      console.log('English captions not available, trying auto-generated...');
+
+      // Try auto-generated captions (no specific lang)
+      const captions = await getSubtitles({
+        videoID: videoId,
+      });
+
+      if (!captions || captions.length === 0) {
+        throw new Error('No captions available for this video');
+      }
+
+      // Convert to SubtitleCue format
+      const subtitles: SubtitleCue[] = captions.map((item: any, index: number) => {
+        const startMs = Math.floor(parseFloat(item.start) * 1000);
+        const durationMs = Math.floor(parseFloat(item.dur) * 1000);
+        const endMs = startMs + durationMs;
 
         return {
           index: index + 1,
@@ -196,9 +201,11 @@ async function fetchYouTubeTranscript(videoId: string, videoUrl: string): Promis
 
       console.log(`Fetched ${subtitles.length} subtitle segments (auto-detected language)`);
       return subtitles;
-    } catch (fallbackError: any) {
-      throw new Error(`Failed to fetch transcript: ${fallbackError.message}. This video may not have captions available.`);
     }
+
+  } catch (error: any) {
+    console.error('Error fetching YouTube transcript:', error);
+    throw new Error(`Failed to fetch transcript: ${error.message}. This video may not have captions available.`);
   }
 }
 
