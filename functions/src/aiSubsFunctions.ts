@@ -139,7 +139,7 @@ async function fetchYouTubeTranscript(videoId: string, videoUrl: string): Promis
     // TEMPORARY: Generate a demo transcript for testing
     // This allows testing the translation flow without ASR implementation
     const genAI = getGeminiAPI();
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
     const prompt = `Generate a realistic English transcript for a YouTube video with ID: ${videoId}.
 The transcript should:
@@ -205,7 +205,7 @@ async function translateSubtitles(
   // Select model based on whether we have transcript
   // With transcript: use Lite (cheaper, translation only)
   // Without transcript: use Flash (ASR capability)
-  const modelName = hasOriginalTranscript ? 'gemini-2.0-flash-lite' : 'gemini-2.0-flash-001';
+  const modelName = hasOriginalTranscript ? 'gemini-2.5-flash-lite' : 'gemini-2.5-flash';
   const model = genAI.getGenerativeModel({ model: modelName });
 
   const languageName = LANGUAGE_NAMES[targetLanguage] || targetLanguage;
