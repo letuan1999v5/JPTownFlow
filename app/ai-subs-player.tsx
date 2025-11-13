@@ -12,6 +12,7 @@ import {
   Share,
   ScrollView,
   Linking,
+  NativeModules,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Download, Share2, ExternalLink, PlayCircle } from 'lucide-react-native';
@@ -28,18 +29,37 @@ try {
   console.log('expo-sharing not available, using fallback');
 }
 
-// Check if react-native-video is available FIRST
+// Check if react-native-video NATIVE MODULE is available
+// IMPORTANT: require('react-native-video') succeeds even without native module
+// We MUST check NativeModules to detect if native code is linked
 let SubtitleVideoPlayer: any = null;
 let hasVideoPlayer = false;
-try {
-  // First check if react-native-video module exists
-  require('react-native-video');
-  // If successful, then import the player component
-  SubtitleVideoPlayer = require('../components/video/SubtitleVideoPlayer').default;
-  hasVideoPlayer = true;
-  console.log('✅ react-native-video available, using video player');
-} catch (error) {
-  console.log('⚠️ react-native-video not available, using fallback subtitle viewer');
+
+// Check if RCTVideo native module exists (the actual native bridge)
+const hasNativeVideoModule = Platform.select({
+  ios: !!NativeModules.RCTVideo || !!NativeModules.VideoManager,
+  android: !!NativeModules.RCTVideo || !!NativeModules.VideoManager,
+  default: false,
+});
+
+console.log('🔍 Checking react-native-video native module...');
+console.log(`Platform: ${Platform.OS}`);
+console.log(`Native modules available:`, Object.keys(NativeModules).filter(k => k.includes('Video')));
+console.log(`hasNativeVideoModule: ${hasNativeVideoModule}`);
+
+if (hasNativeVideoModule) {
+  try {
+    SubtitleVideoPlayer = require('../components/video/SubtitleVideoPlayer').default;
+    hasVideoPlayer = true;
+    console.log('✅ react-native-video native module found, using video player');
+  } catch (error) {
+    console.log('⚠️ Failed to load SubtitleVideoPlayer component:', error);
+    hasVideoPlayer = false;
+  }
+} else {
+  console.log('⚠️ react-native-video native module NOT FOUND');
+  console.log('💡 Using fallback subtitle viewer (text-only)');
+  console.log('💡 To enable video player: npx expo run:android');
   hasVideoPlayer = false;
 }
 
