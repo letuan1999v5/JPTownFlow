@@ -13,17 +13,8 @@ import {
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Video, Clock, Languages } from 'lucide-react-native';
 import { useAuth } from '../context/AuthContext';
-
-interface SubtitleHistory {
-  id: string;
-  videoId: string;
-  videoTitle: string;
-  thumbnailUrl: string;
-  sourceLanguage: string;
-  targetLanguage: string;
-  duration: number;
-  createdAt: Date;
-}
+import { getUserVideoHistory } from '../services/aiSubsService';
+import { UserVideoHistory } from '../types/subtitle';
 
 export default function AISubsHistoryScreen() {
   const { t } = useTranslation();
@@ -31,7 +22,7 @@ export default function AISubsHistoryScreen() {
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
-  const [history, setHistory] = useState<SubtitleHistory[]>([]);
+  const [history, setHistory] = useState<UserVideoHistory[]>([]);
 
   useEffect(() => {
     if (user) {
@@ -42,13 +33,10 @@ export default function AISubsHistoryScreen() {
   const loadHistory = async () => {
     try {
       setLoading(true);
-      // TODO: Fetch from Firestore
-      // Query: videos_metadata collection where userId === user.uid
-      // Order by createdAt desc
+      if (!user) return;
 
-      // Temporary placeholder
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setHistory([]);
+      const userHistory = await getUserVideoHistory(user.uid);
+      setHistory(userHistory);
     } catch (error) {
       console.error('Error loading history:', error);
     } finally {
@@ -74,11 +62,15 @@ export default function AISubsHistoryScreen() {
     return date.toLocaleDateString();
   };
 
-  const handleVideoPress = (item: SubtitleHistory) => {
+  const handleVideoPress = (item: UserVideoHistory) => {
     // Navigate to video player with subtitle
     router.push({
       pathname: '/ai-subs-player',
-      params: { videoId: item.videoId, historyId: item.id },
+      params: {
+        videoHashId: item.videoHashId,
+        targetLanguage: item.targetLanguage,
+        historyId: item.historyId,
+      },
     });
   };
 
@@ -102,14 +94,17 @@ export default function AISubsHistoryScreen() {
     </View>
   );
 
-  const renderItem = ({ item }: { item: SubtitleHistory }) => (
+  const renderItem = ({ item }: { item: UserVideoHistory }) => (
     <TouchableOpacity
       style={styles.historyItem}
       onPress={() => handleVideoPress(item)}
     >
       <View style={styles.thumbnail}>
-        {/* TODO: Load actual thumbnail */}
-        <Video size={32} color="#6B7280" />
+        {item.thumbnailUrl ? (
+          <Video size={32} color="#6B7280" />
+        ) : (
+          <Video size={32} color="#6B7280" />
+        )}
       </View>
 
       <View style={styles.itemInfo}>
@@ -121,20 +116,28 @@ export default function AISubsHistoryScreen() {
           <View style={styles.metaItem}>
             <Languages size={14} color="#6B7280" />
             <Text style={styles.metaText}>
-              {item.sourceLanguage} → {item.targetLanguage}
+              → {item.targetLanguage.toUpperCase()}
             </Text>
           </View>
 
           <View style={styles.metaItem}>
             <Clock size={14} color="#6B7280" />
             <Text style={styles.metaText}>
-              {formatDuration(item.duration)}
+              {formatDuration(item.videoDuration)}
             </Text>
           </View>
         </View>
 
+        <View style={styles.creditsBadge}>
+          <Text style={styles.creditsText}>
+            {item.wasFree
+              ? t('free', 'FREE')
+              : `${item.creditsCharged} ${t('credits', 'credits')}`}
+          </Text>
+        </View>
+
         <Text style={styles.itemDate}>
-          {formatDate(item.createdAt)}
+          {formatDate(item.lastAccessedAt)}
         </Text>
       </View>
     </TouchableOpacity>
@@ -293,5 +296,18 @@ const styles = StyleSheet.create({
   itemDate: {
     fontSize: 12,
     color: '#9CA3AF',
+  },
+  creditsBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginBottom: 4,
+  },
+  creditsText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#DC2626',
   },
 });

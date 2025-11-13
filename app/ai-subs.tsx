@@ -17,6 +17,8 @@ import { ArrowLeft, Video, Play, History, ChevronDown } from 'lucide-react-nativ
 import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import { CreditDisplay, CreditInfoModal } from '../components/credits';
+import { translateVideoSubtitles, checkTranslationCache, calculateCredits } from '../services/aiSubsService';
+import { TranslationRequest } from '../types/subtitle';
 
 type TargetLanguage = 'ja' | 'en' | 'vi' | 'zh' | 'ko' | 'pt' | 'es' | 'fil' | 'th' | 'id';
 
@@ -117,28 +119,139 @@ export default function AISubsScreen() {
     setProcessingStep(t('checkingVideo', 'Checking video...'));
 
     try {
-      // TODO: Implement backend API call to:
-      // 1. Fetch YouTube video info (title, duration)
-      // 2. Check duration limit
-      // 3. Check if already translated (cache)
-      // 4. Fetch transcript
-      // 5. Translate with Gemini
-      // 6. Save to Firestore
-      // 7. Return subtitle data
+      // Check cache first
+      setProcessingStep(t('checkingCache', 'Checking cache...'));
+      const cachedVideo = await checkTranslationCache(videoId, targetLanguage);
+
+      if (cachedVideo && cachedVideo.translations[targetLanguage]) {
+        // Found in cache - navigate to player immediately (FREE)
+        Alert.alert(
+          t('success', 'Success'),
+          t('foundInCache', 'Translation found in cache! No credits charged.'),
+          [
+            {
+              text: t('watchNow', 'Watch Now'),
+              onPress: () => {
+                router.push({
+                  pathname: '/ai-subs-player',
+                  params: { videoHashId: videoId, targetLanguage },
+                });
+              },
+            },
+          ]
+        );
+        return;
+      }
+
+      // Not in cache - need to process
+      // Show credit estimate
+      const estimatedDuration = 600; // Assume 10 minutes for estimate
+      const estimatedCredits = calculateCredits(estimatedDuration, true);
+
+      Alert.alert(
+        t('processVideo', 'Process Video'),
+        t('estimatedCost', `Estimated cost: ~${estimatedCredits} credits (for 10 min video). Actual cost depends on video length. Continue?`),
+        [
+          { text: t('cancel', 'Cancel'), style: 'cancel' },
+          {
+            text: t('continue', 'Continue'),
+            onPress: async () => {
+              await processVideoTranslation(videoId);
+            },
+          },
+        ]
+      );
+    } catch (error: any) {
+      console.error('Error checking video:', error);
+      Alert.alert(t('error', 'Error'), error.message || t('failedToCheckVideo', 'Failed to check video'));
+    } finally {
+      setLoading(false);
+      setProcessingStep('');
+    }
+  };
+
+  // Process video translation
+  const processVideoTranslation = async (videoId: string) => {
+    setLoading(true);
+
+    try {
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
 
       setProcessingStep(t('fetchingTranscript', 'Fetching transcript...'));
 
-      // Temporary placeholder
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const request: TranslationRequest = {
+        userId: user.uid,
+        userTier,
+        videoSource: 'youtube',
+        youtubeUrl,
+        targetLanguage,
+      };
 
-      Alert.alert(
-        t('comingSoon', 'Coming Soon'),
-        t('aiSubsComingSoonDesc', 'AI Subs feature is under development. Backend integration is required.')
-      );
+      setProcessingStep(t('translating', 'Translating subtitles...'));
 
+      const result = await translateVideoSubtitles(request);
+
+      if (result.success) {
+        // Refresh credit balance
+        await refreshCreditBalance();
+
+        // Show success and navigate to player
+        Alert.alert(
+          t('success', 'Success'),
+          t('translationComplete', `Translation complete! Credits charged: ${result.creditsCharged}`),
+          [
+            {
+              text: t('watchNow', 'Watch Now'),
+              onPress: () => {
+                router.push({
+                  pathname: '/ai-subs-player',
+                  params: {
+                    videoHashId: result.videoHashId,
+                    targetLanguage,
+                    historyId: result.historyId,
+                  },
+                });
+              },
+            },
+          ]
+        );
+      } else {
+        throw new Error(result.error || 'Translation failed');
+      }
     } catch (error: any) {
-      console.error('Error generating subtitles:', error);
-      Alert.alert(t('error', 'Error'), error.message || t('failedToGenerateSubtitles', 'Failed to generate subtitles'));
+      console.error('Error processing video:', error);
+
+      // Check for specific error types
+      if (error.message?.includes('Insufficient credits')) {
+        Alert.alert(
+          t('insufficientCredits', 'Insufficient Credits'),
+          t('notEnoughCredits', 'You don\'t have enough credits. Please upgrade or wait for your credit reset.'),
+          [
+            { text: t('ok', 'OK') },
+            {
+              text: t('viewPlans', 'View Plans'),
+              onPress: () => router.push('/(tabs)/premium'),
+            },
+          ]
+        );
+      } else if (error.message?.includes('No transcript available')) {
+        Alert.alert(
+          t('noTranscript', 'No Transcript Available'),
+          t('noTranscriptDesc', 'This video doesn\'t have subtitles/transcript. Please try another video.')
+        );
+      } else if (error.message?.includes('exceeds') && error.message?.includes('minute limit')) {
+        Alert.alert(
+          t('videoTooLong', 'Video Too Long'),
+          error.message
+        );
+      } else {
+        Alert.alert(
+          t('error', 'Error'),
+          error.message || t('failedToGenerateSubtitles', 'Failed to generate subtitles')
+        );
+      }
     } finally {
       setLoading(false);
       setProcessingStep('');
