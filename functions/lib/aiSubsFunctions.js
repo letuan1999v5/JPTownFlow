@@ -66,10 +66,10 @@ const LANGUAGE_NAMES = {
     id: 'Indonesian',
 };
 /**
- * Retry helper with exponential backoff for rate limit errors
+ * Retry helper with exponential backoff for rate limit and overload errors
  */
-async function retryWithBackoff(fn, maxRetries = 3, initialDelay = 1000) {
-    var _a, _b;
+async function retryWithBackoff(fn, maxRetries = 5, initialDelay = 2000) {
+    var _a, _b, _c, _d, _e;
     let lastError;
     for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
@@ -77,16 +77,25 @@ async function retryWithBackoff(fn, maxRetries = 3, initialDelay = 1000) {
         }
         catch (error) {
             lastError = error;
-            // Check if it's a rate limit error (429)
+            // Check if it's a retryable error (429 rate limit or 503 overload)
             const isRateLimitError = error.status === 429 ||
                 ((_a = error.message) === null || _a === void 0 ? void 0 : _a.includes('429')) ||
                 ((_b = error.message) === null || _b === void 0 ? void 0 : _b.includes('Resource exhausted'));
-            if (!isRateLimitError || attempt === maxRetries - 1) {
+            const isOverloadError = error.status === 503 ||
+                ((_c = error.message) === null || _c === void 0 ? void 0 : _c.includes('503')) ||
+                ((_d = error.message) === null || _d === void 0 ? void 0 : _d.includes('overloaded')) ||
+                ((_e = error.message) === null || _e === void 0 ? void 0 : _e.includes('Service Unavailable'));
+            const isRetryableError = isRateLimitError || isOverloadError;
+            // If not retryable or last attempt, throw error
+            if (!isRetryableError || attempt === maxRetries - 1) {
                 throw error;
             }
             // Calculate delay with exponential backoff
-            const delay = initialDelay * Math.pow(2, attempt);
-            console.log(`Rate limit hit (429), retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})...`);
+            // For overload errors, use longer delays
+            const baseDelay = isOverloadError ? initialDelay * 2 : initialDelay;
+            const delay = baseDelay * Math.pow(2, attempt);
+            const errorType = isOverloadError ? 'Model overload (503)' : 'Rate limit (429)';
+            console.log(`${errorType} detected, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})...`);
             await new Promise(resolve => setTimeout(resolve, delay));
         }
     }
@@ -151,9 +160,9 @@ Let's begin with a story.
 ...
 
 Generate transcript:`;
-        // Use retry logic for rate limit errors
-        const result = await retryWithBackoff(() => model.generateContent(prompt), 3, // max 3 retries
-        2000 // initial delay 2 seconds
+        // Use retry logic for rate limit and overload errors
+        const result = await retryWithBackoff(() => model.generateContent(prompt), 5, // max 5 retries for better resilience
+        3000 // initial delay 3 seconds
         );
         const transcriptText = result.response.text().trim();
         // Split into lines and create subtitle cues
@@ -205,9 +214,9 @@ Subtitles to translate (format: index|startTime|endTime|text):
 ${subtitleText}
 
 Translated subtitles:`;
-    // Use retry logic for rate limit errors
-    const result = await retryWithBackoff(() => model.generateContent(prompt), 3, // max 3 retries
-    2000 // initial delay 2 seconds
+    // Use retry logic for rate limit and overload errors
+    const result = await retryWithBackoff(() => model.generateContent(prompt), 5, // max 5 retries for better resilience
+    3000 // initial delay 3 seconds
     );
     const response = result.response;
     const translatedText = response.text();
