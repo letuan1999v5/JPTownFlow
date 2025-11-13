@@ -66,6 +66,33 @@ const LANGUAGE_NAMES = {
     id: 'Indonesian',
 };
 /**
+ * Retry helper with exponential backoff for rate limit errors
+ */
+async function retryWithBackoff(fn, maxRetries = 3, initialDelay = 1000) {
+    var _a, _b;
+    let lastError;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+            return await fn();
+        }
+        catch (error) {
+            lastError = error;
+            // Check if it's a rate limit error (429)
+            const isRateLimitError = error.status === 429 ||
+                ((_a = error.message) === null || _a === void 0 ? void 0 : _a.includes('429')) ||
+                ((_b = error.message) === null || _b === void 0 ? void 0 : _b.includes('Resource exhausted'));
+            if (!isRateLimitError || attempt === maxRetries - 1) {
+                throw error;
+            }
+            // Calculate delay with exponential backoff
+            const delay = initialDelay * Math.pow(2, attempt);
+            console.log(`Rate limit hit (429), retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
+    throw lastError;
+}
+/**
  * Extract YouTube video ID from URL
  */
 function extractYouTubeVideoId(url) {
@@ -106,7 +133,7 @@ async function fetchYouTubeTranscript(videoId, videoUrl) {
         // TEMPORARY: Generate a demo transcript for testing
         // This allows testing the translation flow without ASR implementation
         const genAI = getGeminiAPI();
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
         const prompt = `Generate a realistic English transcript for a YouTube video with ID: ${videoId}.
 The transcript should:
 1. Be approximately 2-3 minutes long (20-30 subtitle segments)
@@ -124,7 +151,10 @@ Let's begin with a story.
 ...
 
 Generate transcript:`;
-        const result = await model.generateContent(prompt);
+        // Use retry logic for rate limit errors
+        const result = await retryWithBackoff(() => model.generateContent(prompt), 3, // max 3 retries
+        2000 // initial delay 2 seconds
+        );
         const transcriptText = result.response.text().trim();
         // Split into lines and create subtitle cues
         const lines = transcriptText.split('\n').filter(line => line.trim().length > 0);
@@ -156,7 +186,7 @@ async function translateSubtitles(subtitles, targetLanguage, hasOriginalTranscri
     // Select model based on whether we have transcript
     // With transcript: use Lite (cheaper, translation only)
     // Without transcript: use Flash (ASR capability)
-    const modelName = hasOriginalTranscript ? 'gemini-2.0-flash-lite' : 'gemini-2.0-flash-001';
+    const modelName = hasOriginalTranscript ? 'gemini-2.5-flash-lite' : 'gemini-2.5-flash';
     const model = genAI.getGenerativeModel({ model: modelName });
     const languageName = LANGUAGE_NAMES[targetLanguage] || targetLanguage;
     // Build prompt
@@ -175,7 +205,10 @@ Subtitles to translate (format: index|startTime|endTime|text):
 ${subtitleText}
 
 Translated subtitles:`;
-    const result = await model.generateContent(prompt);
+    // Use retry logic for rate limit errors
+    const result = await retryWithBackoff(() => model.generateContent(prompt), 3, // max 3 retries
+    2000 // initial delay 2 seconds
+    );
     const response = result.response;
     const translatedText = response.text();
     // Parse response
