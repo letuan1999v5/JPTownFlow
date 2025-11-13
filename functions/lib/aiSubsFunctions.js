@@ -41,6 +41,7 @@ const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const generative_ai_1 = require("@google/generative-ai");
 const cors_1 = __importDefault(require("cors"));
+const youtube_transcript_1 = require("youtube-transcript");
 // Initialize CORS
 const corsHandler = (0, cors_1.default)({ origin: true });
 // Gemini API initialization
@@ -128,62 +129,59 @@ function millisecondsToSRT(ms) {
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')},${String(milliseconds).padStart(3, '0')}`;
 }
 /**
- * Fetch YouTube video info and generate transcript using Gemini
- * This approach works for ALL YouTube videos, regardless of whether they have captions
+ * Fetch YouTube transcript (captions) from video
+ * This fetches real captions/subtitles from YouTube
  */
 async function fetchYouTubeTranscript(videoId, videoUrl) {
     try {
-        console.log(`Generating transcript for video: ${videoId}`);
-        // For now, we'll use Gemini to generate a demo transcript
-        // In production, this would:
-        // 1. Extract audio from YouTube video
-        // 2. Use Gemini 2.0 Flash for ASR (Automatic Speech Recognition)
-        // 3. Return timestamped transcript
-        // TEMPORARY: Generate a demo transcript for testing
-        // This allows testing the translation flow without ASR implementation
-        const genAI = getGeminiAPI();
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-        const prompt = `Generate a realistic English transcript for a YouTube video with ID: ${videoId}.
-The transcript should:
-1. Be approximately 2-3 minutes long (20-30 subtitle segments)
-2. Be in the style of a TED talk or educational content
-3. Include natural speech patterns
-4. Each subtitle should be 5-15 words
-
-Return ONLY the transcript text as a series of sentences, one per line.
-Do not include any explanations, just the transcript lines.
-
-Example format:
-Hello everyone, welcome to this talk.
-Today I want to share something important with you.
-Let's begin with a story.
-...
-
-Generate transcript:`;
-        // Use retry logic for rate limit and overload errors
-        const result = await retryWithBackoff(() => model.generateContent(prompt), 5, // max 5 retries for better resilience
-        3000 // initial delay 3 seconds
-        );
-        const transcriptText = result.response.text().trim();
-        // Split into lines and create subtitle cues
-        const lines = transcriptText.split('\n').filter(line => line.trim().length > 0);
-        // Generate timestamps (assuming ~3 seconds per subtitle)
-        const subtitles = lines.map((text, index) => {
-            const startMs = index * 3000; // 3 seconds per subtitle
-            const endMs = startMs + 3000;
+        console.log(`Fetching transcript for video: ${videoId}`);
+        // Fetch transcript from YouTube
+        // This will get the auto-generated or manual captions
+        const transcriptItems = await youtube_transcript_1.YoutubeTranscript.fetchTranscript(videoId, {
+            lang: 'en', // Try English first
+        });
+        if (!transcriptItems || transcriptItems.length === 0) {
+            throw new Error('No transcript available for this video');
+        }
+        // Convert YouTube transcript format to SubtitleCue format
+        const subtitles = transcriptItems.map((item, index) => {
+            const startMs = Math.floor(item.offset);
+            const endMs = Math.floor(item.offset + item.duration);
             return {
                 index: index + 1,
                 startTime: millisecondsToSRT(startMs),
                 endTime: millisecondsToSRT(endMs),
-                text: text.trim(),
+                text: item.text.trim(),
             };
         });
-        console.log(`Generated ${subtitles.length} subtitle segments`);
+        console.log(`Fetched ${subtitles.length} subtitle segments from YouTube`);
         return subtitles;
     }
     catch (error) {
-        console.error('Error generating YouTube transcript:', error);
-        throw new Error(`Failed to generate transcript: ${error.message}`);
+        console.error('Error fetching YouTube transcript:', error);
+        // If English transcript not found, try to fetch any available language
+        try {
+            console.log('Trying to fetch transcript in any available language...');
+            const transcriptItems = await youtube_transcript_1.YoutubeTranscript.fetchTranscript(videoId);
+            if (!transcriptItems || transcriptItems.length === 0) {
+                throw new Error('No transcript available');
+            }
+            const subtitles = transcriptItems.map((item, index) => {
+                const startMs = Math.floor(item.offset);
+                const endMs = Math.floor(item.offset + item.duration);
+                return {
+                    index: index + 1,
+                    startTime: millisecondsToSRT(startMs),
+                    endTime: millisecondsToSRT(endMs),
+                    text: item.text.trim(),
+                };
+            });
+            console.log(`Fetched ${subtitles.length} subtitle segments (auto-detected language)`);
+            return subtitles;
+        }
+        catch (fallbackError) {
+            throw new Error(`Failed to fetch transcript: ${fallbackError.message}. This video may not have captions available.`);
+        }
     }
 }
 /**
