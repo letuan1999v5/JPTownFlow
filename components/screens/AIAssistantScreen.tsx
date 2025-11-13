@@ -3,7 +3,7 @@ import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
-import { MessageCircle, BookOpen, Globe, Lock, Languages, MapPin, FileText } from 'lucide-react-native';
+import { MessageCircle, BookOpen, Globe, Lock, Languages, MapPin, FileText, Video } from 'lucide-react-native';
 import { useAuth } from '../../context/AuthContext';
 
 type SubscriptionTier = 'FREE' | 'PRO' | 'ULTRA';
@@ -94,6 +94,16 @@ export default function AIAssistantScreen() {
       descKey: 'aiChatDesc',
       color: '#2563EB',
       route: '/ai-chats-list',
+      badge: 'FREE',
+      requiredTier: 'FREE',
+    },
+    {
+      id: 'subs',
+      icon: Video,
+      titleKey: 'aiSubsTitle',
+      descKey: 'aiSubsDesc',
+      color: '#EF4444',
+      route: '/ai-subs',
       badge: 'FREE',
       requiredTier: 'FREE',
     },
