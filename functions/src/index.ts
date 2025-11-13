@@ -13,6 +13,9 @@ export * from './creditFunctions';
 // Export migration functions
 export * from './migrationFunctions';
 
+// Export AI Subs functions
+export * from './aiSubsFunctions';
+
 // Initialize CORS
 const corsHandler = cors({ origin: true });
 
