@@ -290,8 +290,25 @@ export const translateVideoSubtitles = async (
     const cloudFunctionUrl = process.env.EXPO_PUBLIC_SUBTITLE_CLOUD_FUNCTION_URL;
 
     if (!cloudFunctionUrl) {
-      throw new Error('Subtitle Cloud Function URL not configured');
+      throw new Error(
+        'Cloud Function not configured.\n\n' +
+        'Please:\n' +
+        '1. Deploy Cloud Function (see docs/AI_SUBS_BACKEND_SETUP.md)\n' +
+        '2. Add URL to .env file\n' +
+        '3. Restart Expo with: npx expo start --clear'
+      );
     }
+
+    // Validate URL format
+    if (!cloudFunctionUrl.startsWith('http://') && !cloudFunctionUrl.startsWith('https://')) {
+      throw new Error(
+        'Invalid Cloud Function URL.\n\n' +
+        'URL must start with https://\n' +
+        `Current value: ${cloudFunctionUrl}`
+      );
+    }
+
+    console.log('Calling Cloud Function:', cloudFunctionUrl);
 
     // Call Cloud Function
     const response = await fetch(cloudFunctionUrl, {
@@ -302,9 +319,60 @@ export const translateVideoSubtitles = async (
       body: JSON.stringify(request),
     });
 
+    console.log('Response status:', response.status);
+    console.log('Response headers:', response.headers);
+
+    // Check Content-Type before parsing
+    const contentType = response.headers.get('content-type');
+
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Failed to translate video');
+      // Try to get error message
+      let errorMessage = 'Failed to translate video';
+
+      if (contentType?.includes('application/json')) {
+        try {
+          const error = await response.json();
+          errorMessage = error.message || errorMessage;
+        } catch (e) {
+          // Failed to parse error JSON
+        }
+      } else {
+        // Response is not JSON (probably HTML error page)
+        const textResponse = await response.text();
+        console.log('Non-JSON response:', textResponse.substring(0, 500));
+
+        if (response.status === 404) {
+          errorMessage =
+            'Cloud Function not found (404).\n\n' +
+            'Please check:\n' +
+            '1. Cloud Function is deployed\n' +
+            '2. URL in .env is correct\n' +
+            `\nCurrent URL: ${cloudFunctionUrl}`;
+        } else if (response.status === 403) {
+          errorMessage =
+            'Access denied (403).\n\n' +
+            'Cloud Function may need authentication.\n' +
+            'Check Firebase Function permissions.';
+        } else {
+          errorMessage =
+            `Server error (${response.status}).\n\n` +
+            'Cloud Function may not be deployed correctly.\n' +
+            'See docs/AI_SUBS_BACKEND_SETUP.md';
+        }
+      }
+
+      throw new Error(errorMessage);
+    }
+
+    // Parse successful response
+    if (!contentType?.includes('application/json')) {
+      const textResponse = await response.text();
+      console.log('Unexpected non-JSON response:', textResponse.substring(0, 500));
+      throw new Error(
+        'Cloud Function returned invalid response.\n\n' +
+        'Expected JSON but got HTML/text.\n' +
+        'Please check Cloud Function deployment.'
+      );
     }
 
     const result: TranslationResponse = await response.json();
