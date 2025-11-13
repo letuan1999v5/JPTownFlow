@@ -376,9 +376,37 @@ export const translateVideoSubtitles = async (
     }
 
     const result: TranslationResponse = await response.json();
+
+    // Check if the response indicates an error
+    if (!result.success && result.error) {
+      throw new Error(result.error);
+    }
+
     return result;
   } catch (error: any) {
     console.error('Error translating video:', error);
+
+    // Improve error messages for common issues
+    if (error.message?.includes('Transcript is disabled')) {
+      throw new Error(
+        '⚠️ This video does not have subtitles/transcript enabled.\n\n' +
+        'Please try a different video that has:\n' +
+        '• Automatic captions enabled\n' +
+        '• Manual subtitles uploaded\n\n' +
+        'Tip: Most educational/tutorial videos have transcripts!'
+      );
+    }
+
+    if (error.message?.includes('Video unavailable')) {
+      throw new Error(
+        '⚠️ This video is unavailable or private.\n\n' +
+        'Please check that:\n' +
+        '• Video is public\n' +
+        '• URL is correct\n' +
+        '• Video is not age-restricted'
+      );
+    }
+
     throw error;
   }
 };
