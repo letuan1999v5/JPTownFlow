@@ -2,6 +2,8 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import cors from 'cors';
+// @ts-ignore - ytdl-core doesn't have type definitions
+import ytdl from '@distube/ytdl-core';
 
 // Initialize CORS
 const corsHandler = cors({ origin: true });
@@ -135,6 +137,79 @@ function millisecondsToSRT(ms: number): string {
   const milliseconds = ms % 1000;
 
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')},${String(milliseconds).padStart(3, '0')}`;
+}
+
+/**
+ * Download YouTube audio and upload to Firebase Storage
+ * Returns the storage path
+ */
+async function downloadAndUploadYouTubeAudio(
+  videoId: string,
+  userId: string
+): Promise<{ storagePath: string; durationSeconds: number }> {
+  console.log(`Downloading audio for video: ${videoId}`);
+
+  const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+  try {
+    // Get video info
+    const info = await ytdl.getInfo(videoUrl);
+    const durationSeconds = parseInt(info.videoDetails.lengthSeconds);
+
+    console.log(`Video duration: ${durationSeconds}s (${Math.floor(durationSeconds / 60)}m)`);
+
+    // Get audio stream (lowest quality to save bandwidth and cost)
+    const audioFormat = ytdl.chooseFormat(info.formats, {
+      quality: 'lowestaudio',
+      filter: 'audioonly',
+    });
+
+    if (!audioFormat || !audioFormat.url) {
+      throw new Error('No audio format available for this video');
+    }
+
+    console.log(`Selected audio format: ${audioFormat.mimeType}, bitrate: ${audioFormat.bitrate}`);
+
+    // Download audio to memory
+    const audioStream = ytdl(videoUrl, { format: audioFormat });
+    const chunks: Buffer[] = [];
+
+    await new Promise((resolve, reject) => {
+      audioStream.on('data', (chunk: Buffer) => chunks.push(chunk));
+      audioStream.on('end', resolve);
+      audioStream.on('error', reject);
+    });
+
+    const audioBuffer = Buffer.concat(chunks);
+    console.log(`Downloaded ${audioBuffer.length} bytes of audio`);
+
+    // Upload to Firebase Storage
+    const bucket = admin.storage().bucket();
+    const storagePath = `temp-audio/${userId}/${videoId}.mp3`;
+    const file = bucket.file(storagePath);
+
+    await file.save(audioBuffer, {
+      contentType: 'audio/mpeg',
+      metadata: {
+        metadata: {
+          videoId,
+          userId,
+          durationSeconds: durationSeconds.toString(),
+        },
+      },
+    });
+
+    console.log(`✅ Uploaded audio to Storage: ${storagePath}`);
+
+    return {
+      storagePath,
+      durationSeconds,
+    };
+
+  } catch (error: any) {
+    console.error('Error downloading/uploading YouTube audio:', error);
+    throw new Error(`Failed to download audio: ${error.message}`);
+  }
 }
 
 /**
@@ -360,15 +435,6 @@ export const translateVideoSubtitles = functions.https.onRequest((request, respo
         return;
       }
 
-      // Require storagePath for client-side upload
-      if (!storagePath) {
-        response.status(400).json({
-          success: false,
-          error: 'Missing storagePath parameter. Please upload audio to Firebase Storage first.',
-        });
-        return;
-      }
-
       // Extract video ID from URL or use provided videoId
       let videoId = providedVideoId;
       if (!videoId && youtubeUrl) {
@@ -378,13 +444,12 @@ export const translateVideoSubtitles = functions.https.onRequest((request, respo
       if (!videoId) {
         response.status(400).json({
           success: false,
-          error: 'Missing videoId parameter',
+          error: 'Missing videoId or youtubeUrl parameter',
         });
         return;
       }
 
       console.log(`Processing YouTube video: ${videoId} for user: ${userId}`);
-      console.log(`Audio file location: ${storagePath}`);
 
       // Check if translation already exists in cache
       const db = admin.firestore();
@@ -437,9 +502,23 @@ export const translateVideoSubtitles = functions.https.onRequest((request, respo
         }
       }
 
+      // Download audio if not provided (server-side download)
+      let finalStoragePath = storagePath;
+      let videoDurationSeconds = 0;
+
+      if (!finalStoragePath) {
+        console.log('No storagePath provided, downloading audio on server...');
+        const downloadResult = await downloadAndUploadYouTubeAudio(videoId, userId);
+        finalStoragePath = downloadResult.storagePath;
+        videoDurationSeconds = downloadResult.durationSeconds;
+        console.log(`Audio downloaded and uploaded to: ${finalStoragePath}`);
+      } else {
+        console.log(`Using client-provided audio at: ${finalStoragePath}`);
+      }
+
       // Generate transcript from audio in Storage using Gemini
       console.log('Generating transcript from storage using Gemini 2.5 Flash...');
-      const originalTranscript = await generateTranscriptFromStorage(storagePath);
+      const originalTranscript = await generateTranscriptFromStorage(finalStoragePath);
 
       if (originalTranscript.length === 0) {
         response.status(400).json({
@@ -449,10 +528,12 @@ export const translateVideoSubtitles = functions.https.onRequest((request, respo
         return;
       }
 
-      // Calculate video duration from transcript
-      const lastCue = originalTranscript[originalTranscript.length - 1];
-      const lastEndTimeMs = parseInt(lastCue.endTime.split(',')[0].split(':').reduce((acc, time) => (acc * 60) + parseInt(time), 0) + '000') + parseInt(lastCue.endTime.split(',')[1]);
-      const videoDurationSeconds = Math.ceil(lastEndTimeMs / 1000);
+      // Calculate video duration if not already known
+      if (videoDurationSeconds === 0) {
+        const lastCue = originalTranscript[originalTranscript.length - 1];
+        const lastEndTimeMs = parseInt(lastCue.endTime.split(',')[0].split(':').reduce((acc, time) => (acc * 60) + parseInt(time), 0) + '000') + parseInt(lastCue.endTime.split(',')[1]);
+        videoDurationSeconds = Math.ceil(lastEndTimeMs / 1000);
+      }
 
       console.log(`Video duration: ${videoDurationSeconds}s (${Math.floor(videoDurationSeconds / 60)}m)`);
 
