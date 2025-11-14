@@ -43,6 +43,8 @@ const generative_ai_1 = require("@google/generative-ai");
 const cors_1 = __importDefault(require("cors"));
 // @ts-ignore - youtube-captions-scraper doesn't have type definitions
 const youtube_captions_scraper_1 = require("youtube-captions-scraper");
+// @ts-ignore - youtube-transcript doesn't have type definitions
+const youtube_transcript_1 = require("youtube-transcript");
 // Initialize CORS
 const corsHandler = (0, cors_1.default)({ origin: true });
 // Gemini API initialization
@@ -131,46 +133,44 @@ function millisecondsToSRT(ms) {
 }
 /**
  * Fetch YouTube transcript (captions) from video
+ * Uses fallback chain: youtube-captions-scraper → youtube-transcript
  * This fetches real captions/subtitles from YouTube
  */
 async function fetchYouTubeTranscript(videoId, videoUrl) {
+    console.log(`Fetching transcript for video: ${videoId}`);
+    // METHOD 1: Try youtube-captions-scraper first
     try {
-        console.log(`Fetching transcript for video: ${videoId}`);
+        console.log('Attempting Method 1: youtube-captions-scraper...');
         // Try English first
         try {
             const captions = await (0, youtube_captions_scraper_1.getSubtitles)({
                 videoID: videoId,
-                lang: 'en', // Try English first
+                lang: 'en',
             });
-            if (!captions || captions.length === 0) {
-                throw new Error('No captions found');
+            if (captions && captions.length > 0) {
+                const subtitles = captions.map((item, index) => {
+                    const startMs = Math.floor(parseFloat(item.start) * 1000);
+                    const durationMs = Math.floor(parseFloat(item.dur) * 1000);
+                    const endMs = startMs + durationMs;
+                    return {
+                        index: index + 1,
+                        startTime: millisecondsToSRT(startMs),
+                        endTime: millisecondsToSRT(endMs),
+                        text: item.text.trim(),
+                    };
+                });
+                console.log(`✅ Method 1 succeeded: Fetched ${subtitles.length} segments (English)`);
+                return subtitles;
             }
-            // Convert to SubtitleCue format
-            const subtitles = captions.map((item, index) => {
-                // youtube-captions-scraper returns start/dur in seconds, convert to ms
-                const startMs = Math.floor(parseFloat(item.start) * 1000);
-                const durationMs = Math.floor(parseFloat(item.dur) * 1000);
-                const endMs = startMs + durationMs;
-                return {
-                    index: index + 1,
-                    startTime: millisecondsToSRT(startMs),
-                    endTime: millisecondsToSRT(endMs),
-                    text: item.text.trim(),
-                };
-            });
-            console.log(`Fetched ${subtitles.length} subtitle segments from YouTube (English)`);
-            return subtitles;
         }
         catch (englishError) {
-            console.log('English captions not available, trying auto-generated...');
-            // Try auto-generated captions (no specific lang)
-            const captions = await (0, youtube_captions_scraper_1.getSubtitles)({
-                videoID: videoId,
-            });
-            if (!captions || captions.length === 0) {
-                throw new Error('No captions available for this video');
-            }
-            // Convert to SubtitleCue format
+            console.log('English captions not found, trying auto-detect...');
+        }
+        // Try auto-generated captions
+        const captions = await (0, youtube_captions_scraper_1.getSubtitles)({
+            videoID: videoId,
+        });
+        if (captions && captions.length > 0) {
             const subtitles = captions.map((item, index) => {
                 const startMs = Math.floor(parseFloat(item.start) * 1000);
                 const durationMs = Math.floor(parseFloat(item.dur) * 1000);
@@ -182,14 +182,40 @@ async function fetchYouTubeTranscript(videoId, videoUrl) {
                     text: item.text.trim(),
                 };
             });
-            console.log(`Fetched ${subtitles.length} subtitle segments (auto-detected language)`);
+            console.log(`✅ Method 1 succeeded: Fetched ${subtitles.length} segments (auto-detect)`);
             return subtitles;
         }
     }
-    catch (error) {
-        console.error('Error fetching YouTube transcript:', error);
-        throw new Error(`Failed to fetch transcript: ${error.message}. This video may not have captions available.`);
+    catch (method1Error) {
+        console.log('❌ Method 1 failed:', method1Error.message);
     }
+    // METHOD 2: Fallback to youtube-transcript
+    try {
+        console.log('Attempting Method 2: youtube-transcript...');
+        const transcriptData = await youtube_transcript_1.YoutubeTranscript.fetchTranscript(videoId);
+        if (transcriptData && transcriptData.length > 0) {
+            const subtitles = transcriptData.map((item, index) => {
+                // youtube-transcript returns offset (start) and duration in ms
+                const startMs = Math.floor(item.offset);
+                const durationMs = Math.floor(item.duration);
+                const endMs = startMs + durationMs;
+                return {
+                    index: index + 1,
+                    startTime: millisecondsToSRT(startMs),
+                    endTime: millisecondsToSRT(endMs),
+                    text: item.text.trim(),
+                };
+            });
+            console.log(`✅ Method 2 succeeded: Fetched ${subtitles.length} segments`);
+            return subtitles;
+        }
+    }
+    catch (method2Error) {
+        console.log('❌ Method 2 failed:', method2Error.message);
+    }
+    // Both methods failed
+    console.error('❌ All methods failed to fetch transcript');
+    throw new Error('Video không có phụ đề. Chức năng dịch video không có phụ đề đang được phát triển.');
 }
 /**
  * Translate subtitles using Gemini
