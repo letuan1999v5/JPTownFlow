@@ -38,6 +38,15 @@ export interface AudioUploadProgress {
 async function getAudioUrlFromCobalt(videoUrl: string): Promise<{ url: string }> {
   try {
     console.log('Getting audio URL from Cobalt API...');
+    console.log('Video URL:', videoUrl);
+
+    const requestBody = {
+      url: videoUrl,
+      isAudioOnly: true,
+      aFormat: 'mp3',
+    };
+
+    console.log('Request body:', JSON.stringify(requestBody));
 
     const response = await fetch(COBALT_API_URL, {
       method: 'POST',
@@ -45,28 +54,34 @@ async function getAudioUrlFromCobalt(videoUrl: string): Promise<{ url: string }>
         'Accept': 'application/json',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        url: videoUrl,
-        vCodec: 'h264',
-        vQuality: '360',
-        aFormat: 'mp3',
-        isAudioOnly: true,
-        filenamePattern: 'basic',
-      }),
+      body: JSON.stringify(requestBody),
     });
 
+    console.log('Response status:', response.status);
+
+    // Get response text to see what's returned
+    const responseText = await response.text();
+    console.log('Response body:', responseText);
+
     if (!response.ok) {
-      throw new Error(`Cobalt API error: ${response.status}`);
+      throw new Error(`Cobalt API error: ${response.status} - ${responseText}`);
     }
 
-    const data = await response.json();
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      throw new Error(`Invalid JSON response: ${responseText}`);
+    }
+
+    console.log('Parsed response:', JSON.stringify(data));
 
     // Check response status
     if (data.status === 'error' || data.status === 'rate-limit') {
       throw new Error(data.text || 'Failed to get audio URL');
     }
 
-    if (data.status !== 'redirect' && data.status !== 'stream') {
+    if (data.status !== 'redirect' && data.status !== 'stream' && data.status !== 'tunnel') {
       throw new Error(`Unexpected response status: ${data.status}`);
     }
 
