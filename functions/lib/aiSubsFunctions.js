@@ -149,7 +149,7 @@ async function generateTranscriptFromStorage(storagePath) {
         const audioBase64 = audioBuffer.toString('base64');
         // Get file metadata for mime type
         const [metadata] = await file.getMetadata();
-        const mimeType = metadata.contentType || 'audio/mp4';
+        const mimeType = metadata.contentType || 'audio/mpeg';
         console.log(`Audio file: ${storagePath}, mime type: ${mimeType}, size: ${audioBuffer.length} bytes`);
         // Use Gemini to transcribe audio
         const genAI = getGeminiAPI();
