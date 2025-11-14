@@ -1,0 +1,17 @@
+{
+  "name": "ytdl-service",
+  "version": "1.0.0",
+  "description": "Cloud Run service for downloading YouTube audio using yt-dlp",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "firebase-admin": "^12.0.0",
+    "cors": "^2.8.5"
+  },
+  "engines": {
+    "node": "20"
+  }
+}

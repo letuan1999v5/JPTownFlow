@@ -41,8 +41,6 @@ const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const generative_ai_1 = require("@google/generative-ai");
 const cors_1 = __importDefault(require("cors"));
-// @ts-ignore - ytdl-core doesn't have type definitions
-const ytdl_core_1 = __importDefault(require("@distube/ytdl-core"));
 // Initialize CORS
 const corsHandler = (0, cors_1.default)({ origin: true });
 // Gemini API initialization
@@ -130,59 +128,48 @@ function millisecondsToSRT(ms) {
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')},${String(milliseconds).padStart(3, '0')}`;
 }
 /**
- * Download YouTube audio and upload to Firebase Storage
+ * Download YouTube audio via Cloud Run service (yt-dlp)
  * Returns the storage path
  */
 async function downloadAndUploadYouTubeAudio(videoId, userId) {
-    console.log(`Downloading audio for video: ${videoId}`);
-    const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    var _a;
+    console.log(`Requesting audio download from Cloud Run for video: ${videoId}`);
     try {
-        // Get video info
-        const info = await ytdl_core_1.default.getInfo(videoUrl);
-        const durationSeconds = parseInt(info.videoDetails.lengthSeconds);
-        console.log(`Video duration: ${durationSeconds}s (${Math.floor(durationSeconds / 60)}m)`);
-        // Get audio stream (lowest quality to save bandwidth and cost)
-        const audioFormat = ytdl_core_1.default.chooseFormat(info.formats, {
-            quality: 'lowestaudio',
-            filter: 'audioonly',
-        });
-        if (!audioFormat || !audioFormat.url) {
-            throw new Error('No audio format available for this video');
+        // Get Cloud Run service URL from environment
+        const cloudRunUrl = ((_a = functions.config().ytdl) === null || _a === void 0 ? void 0 : _a.serviceurl) || process.env.YTDL_SERVICE_URL;
+        if (!cloudRunUrl) {
+            throw new Error('Cloud Run service URL not configured. Set with: firebase functions:config:set ytdl.serviceurl="https://your-service-url"');
         }
-        console.log(`Selected audio format: ${audioFormat.mimeType}, bitrate: ${audioFormat.bitrate}`);
-        // Download audio to memory
-        const audioStream = (0, ytdl_core_1.default)(videoUrl, { format: audioFormat });
-        const chunks = [];
-        await new Promise((resolve, reject) => {
-            audioStream.on('data', (chunk) => chunks.push(chunk));
-            audioStream.on('end', resolve);
-            audioStream.on('error', reject);
-        });
-        const audioBuffer = Buffer.concat(chunks);
-        console.log(`Downloaded ${audioBuffer.length} bytes of audio`);
-        // Upload to Firebase Storage
-        const bucket = admin.storage().bucket();
-        const storagePath = `temp-audio/${userId}/${videoId}.mp3`;
-        const file = bucket.file(storagePath);
-        await file.save(audioBuffer, {
-            contentType: 'audio/mpeg',
-            metadata: {
-                metadata: {
-                    videoId,
-                    userId,
-                    durationSeconds: durationSeconds.toString(),
-                },
+        console.log(`Calling Cloud Run service: ${cloudRunUrl}/download`);
+        // Call Cloud Run service
+        const response = await fetch(`${cloudRunUrl}/download`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
             },
+            body: JSON.stringify({
+                videoId,
+                userId,
+            }),
         });
-        console.log(`✅ Uploaded audio to Storage: ${storagePath}`);
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Cloud Run service error (${response.status}): ${errorText}`);
+        }
+        const result = await response.json();
+        if (!result.success) {
+            throw new Error(result.error || 'Cloud Run service returned failure');
+        }
+        console.log(`✅ Audio downloaded via Cloud Run: ${result.storagePath}`);
+        console.log(`Duration: ${result.durationSeconds}s, Size: ${result.fileSize} bytes`);
         return {
-            storagePath,
-            durationSeconds,
+            storagePath: result.storagePath,
+            durationSeconds: result.durationSeconds || 0,
         };
     }
     catch (error) {
-        console.error('Error downloading/uploading YouTube audio:', error);
-        throw new Error(`Failed to download audio: ${error.message}`);
+        console.error('Error calling Cloud Run service:', error);
+        throw new Error(`Failed to download audio via Cloud Run: ${error.message}`);
     }
 }
 /**
