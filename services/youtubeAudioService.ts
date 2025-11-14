@@ -3,9 +3,9 @@
 import * as FileSystem from 'expo-file-system';
 import { getStorage, ref, uploadBytesResumable } from 'firebase/storage';
 
-// Cobalt API for downloading YouTube audio
-// More reliable than Invidious instances
-const COBALT_API_URL = 'https://api.cobalt.tools/api/json';
+// Cobalt API v9+ for downloading YouTube audio
+// Updated endpoint after v7 shutdown (Nov 11, 2024)
+const COBALT_API_URL = 'https://api.cobalt.tools/';
 
 interface DownloadProgress {
   progress: number; // 0-100
@@ -32,18 +32,18 @@ export interface AudioUploadProgress {
 }
 
 /**
- * Get audio URL from YouTube using Cobalt API
+ * Get audio URL from YouTube using Cobalt API v9+
  * Cobalt is a reliable service for downloading YouTube content
  */
 async function getAudioUrlFromCobalt(videoUrl: string): Promise<{ url: string }> {
   try {
-    console.log('Getting audio URL from Cobalt API...');
+    console.log('Getting audio URL from Cobalt API v9...');
     console.log('Video URL:', videoUrl);
 
     const requestBody = {
       url: videoUrl,
+      audioFormat: 'mp3',
       isAudioOnly: true,
-      aFormat: 'mp3',
     };
 
     console.log('Request body:', JSON.stringify(requestBody));
@@ -81,17 +81,14 @@ async function getAudioUrlFromCobalt(videoUrl: string): Promise<{ url: string }>
       throw new Error(data.text || 'Failed to get audio URL');
     }
 
-    if (data.status !== 'redirect' && data.status !== 'stream' && data.status !== 'tunnel') {
-      throw new Error(`Unexpected response status: ${data.status}`);
-    }
-
-    const audioUrl = data.url;
+    // V9+ returns direct URL in different field
+    const audioUrl = data.url || data.audio || data.download;
 
     if (!audioUrl) {
-      throw new Error('No audio URL in response');
+      throw new Error(`No audio URL in response. Response: ${JSON.stringify(data)}`);
     }
 
-    console.log('✅ Got audio URL from Cobalt API');
+    console.log('✅ Got audio URL from Cobalt API v9');
 
     return {
       url: audioUrl,
