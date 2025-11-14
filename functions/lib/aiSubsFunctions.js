@@ -41,14 +41,8 @@ const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const generative_ai_1 = require("@google/generative-ai");
 const cors_1 = __importDefault(require("cors"));
-// @ts-ignore - youtubei.js types
-const youtubei_js_1 = require("youtubei.js");
 // @ts-ignore - ytdl-core doesn't have type definitions
 const ytdl_core_1 = __importDefault(require("@distube/ytdl-core"));
-// @ts-ignore - youtube-captions-scraper doesn't have type definitions
-const youtube_captions_scraper_1 = require("youtube-captions-scraper");
-// @ts-ignore - youtube-transcript doesn't have type definitions
-const youtube_transcript_1 = require("youtube-transcript");
 // Initialize CORS
 const corsHandler = (0, cors_1.default)({ origin: true });
 // Gemini API initialization
@@ -137,7 +131,9 @@ function millisecondsToSRT(ms) {
 }
 /**
  * Parse YouTube caption XML to SubtitleCue format
+ * UNUSED: Kept for reference, caption scraping methods all fail
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function parseCaptionXML(xmlText) {
     const subtitles = [];
     // Simple XML parsing for <text> tags
@@ -165,159 +161,107 @@ function parseCaptionXML(xmlText) {
     return subtitles;
 }
 /**
- * Fetch YouTube transcript (captions) from video
- * Uses fallback chain: youtubei.js → ytdl-core → youtube-captions-scraper → youtube-transcript
- * This fetches real captions/subtitles from YouTube
+ * Generate transcript from YouTube video audio using Gemini
+ * This uses Gemini 2.5 Flash for audio transcription
  */
-async function fetchYouTubeTranscript(videoId, videoUrl) {
-    var _a, _b, _c, _d;
-    console.log(`Fetching transcript for video: ${videoId}`);
-    // METHOD -1: Try youtubei.js first (uses InnerTube API - most reliable)
+async function generateTranscriptFromAudio(videoId, videoUrl) {
+    console.log(`Generating transcript from audio for video: ${videoId}`);
     try {
-        console.log('Attempting Method -1: youtubei.js (InnerTube API)...');
-        const youtube = await youtubei_js_1.Innertube.create();
-        const info = await youtube.getInfo(videoId);
-        // Get transcript
-        const transcriptData = await info.getTranscript();
-        if (transcriptData && transcriptData.transcript) {
-            const content = transcriptData.transcript.content;
-            if (content && content.body) {
-                const segments = content.body.initial_segments;
-                if (segments && segments.length > 0) {
-                    const subtitles = segments.map((segment, index) => {
-                        var _a;
-                        const startMs = Math.floor(segment.start_ms);
-                        const endMs = Math.floor(segment.end_ms);
-                        const text = ((_a = segment.snippet) === null || _a === void 0 ? void 0 : _a.text) || '';
-                        return {
-                            index: index + 1,
-                            startTime: millisecondsToSRT(startMs),
-                            endTime: millisecondsToSRT(endMs),
-                            text: text.trim(),
-                        };
+        // Get video info to check duration
+        const info = await ytdl_core_1.default.getInfo(videoUrl);
+        const durationSeconds = parseInt(info.videoDetails.lengthSeconds);
+        console.log(`Video duration: ${durationSeconds}s (${Math.floor(durationSeconds / 60)}m${durationSeconds % 60}s)`);
+        // Get audio stream URL
+        const audioFormat = ytdl_core_1.default.chooseFormat(info.formats, { quality: 'lowestaudio', filter: 'audioonly' });
+        if (!audioFormat || !audioFormat.url) {
+            throw new Error('No audio format available for this video');
+        }
+        console.log(`Audio format selected: ${audioFormat.mimeType}, size: ${audioFormat.contentLength} bytes`);
+        // Download audio (first 30 seconds for testing to reduce cost)
+        // TODO: Remove limit when ready for production
+        const https = require('https');
+        const audioChunks = [];
+        let downloadedBytes = 0;
+        const maxBytes = 5 * 1024 * 1024; // 5MB limit for testing
+        await new Promise((resolve, reject) => {
+            https.get(audioFormat.url, (response) => {
+                response.on('data', (chunk) => {
+                    if (downloadedBytes < maxBytes) {
+                        audioChunks.push(chunk);
+                        downloadedBytes += chunk.length;
+                    }
+                    else {
+                        response.destroy(); // Stop downloading
+                        resolve(null);
+                    }
+                });
+                response.on('end', resolve);
+                response.on('error', reject);
+            }).on('error', reject);
+        });
+        const audioBuffer = Buffer.concat(audioChunks);
+        console.log(`Downloaded ${audioBuffer.length} bytes of audio`);
+        // Convert to base64 for Gemini
+        const audioBase64 = audioBuffer.toString('base64');
+        // Use Gemini to transcribe audio
+        const genAI = getGeminiAPI();
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const prompt = `You are an expert audio transcriptionist. Transcribe this audio into subtitles with accurate timestamps.
+
+IMPORTANT RULES:
+1. Generate subtitle segments of 2-5 seconds each
+2. Include accurate start and end timestamps in milliseconds
+3. Break text at natural speech boundaries
+4. Output ONLY the subtitle data in this format:
+   index|startTimeMs|endTimeMs|text
+
+Example:
+1|0|2500|Welcome to this video
+2|2500|5000|Today we're going to talk about
+
+Transcribe the audio now:`;
+        const result = await model.generateContent([
+            prompt,
+            {
+                inlineData: {
+                    data: audioBase64,
+                    mimeType: audioFormat.mimeType || 'audio/mp4',
+                },
+            },
+        ]);
+        const response = result.response;
+        const transcriptText = response.text();
+        console.log(`Gemini transcription response length: ${transcriptText.length} chars`);
+        // Parse transcript
+        const lines = transcriptText.split('\n').filter(line => line.trim());
+        const subtitles = [];
+        for (const line of lines) {
+            const parts = line.split('|');
+            if (parts.length >= 4) {
+                const index = parseInt(parts[0]);
+                const startMs = parseInt(parts[1]);
+                const endMs = parseInt(parts[2]);
+                const text = parts.slice(3).join('|').trim();
+                if (!isNaN(index) && !isNaN(startMs) && !isNaN(endMs) && text) {
+                    subtitles.push({
+                        index,
+                        startTime: millisecondsToSRT(startMs),
+                        endTime: millisecondsToSRT(endMs),
+                        text,
                     });
-                    console.log(`✅ Method -1 succeeded: Fetched ${subtitles.length} segments`);
-                    return subtitles;
                 }
             }
         }
-        console.log('No transcript data found in InnerTube response');
-    }
-    catch (methodMinus1Error) {
-        console.log('❌ Method -1 failed:', methodMinus1Error.message);
-    }
-    // METHOD 0: Try ytdl-core
-    try {
-        console.log('Attempting Method 0: @distube/ytdl-core...');
-        const info = await ytdl_core_1.default.getInfo(videoUrl);
-        // Get caption tracks
-        const captionTracks = (_c = (_b = (_a = info.player_response) === null || _a === void 0 ? void 0 : _a.captions) === null || _b === void 0 ? void 0 : _b.playerCaptionsTracklistRenderer) === null || _c === void 0 ? void 0 : _c.captionTracks;
-        if (captionTracks && captionTracks.length > 0) {
-            console.log(`Found ${captionTracks.length} caption tracks`);
-            // Prefer English, then first available
-            let selectedTrack = captionTracks.find((t) => t.languageCode === 'en') || captionTracks[0];
-            console.log(`Using caption: ${((_d = selectedTrack.name) === null || _d === void 0 ? void 0 : _d.simpleText) || selectedTrack.languageCode}`);
-            // Fetch caption XML
-            const https = require('https');
-            const captionXML = await new Promise((resolve, reject) => {
-                https.get(selectedTrack.baseUrl, (res) => {
-                    let data = '';
-                    res.on('data', (chunk) => data += chunk);
-                    res.on('end', () => resolve(data));
-                    res.on('error', reject);
-                }).on('error', reject);
-            });
-            const subtitles = parseCaptionXML(captionXML);
-            if (subtitles.length > 0) {
-                console.log(`✅ Method 0 succeeded: Fetched ${subtitles.length} segments`);
-                return subtitles;
-            }
+        if (subtitles.length === 0) {
+            throw new Error('Failed to parse transcription from Gemini response');
         }
-        else {
-            console.log('No caption tracks found in video info');
-        }
+        console.log(`✅ Generated ${subtitles.length} subtitle segments from audio`);
+        return subtitles;
     }
-    catch (method0Error) {
-        console.log('❌ Method 0 failed:', method0Error.message);
+    catch (error) {
+        console.error('Error generating transcript from audio:', error);
+        throw new Error(`Failed to generate transcript from audio: ${error.message}`);
     }
-    // METHOD 1: Try youtube-captions-scraper
-    try {
-        console.log('Attempting Method 1: youtube-captions-scraper...');
-        // Try English first
-        try {
-            const captions = await (0, youtube_captions_scraper_1.getSubtitles)({
-                videoID: videoId,
-                lang: 'en',
-            });
-            if (captions && captions.length > 0) {
-                const subtitles = captions.map((item, index) => {
-                    const startMs = Math.floor(parseFloat(item.start) * 1000);
-                    const durationMs = Math.floor(parseFloat(item.dur) * 1000);
-                    const endMs = startMs + durationMs;
-                    return {
-                        index: index + 1,
-                        startTime: millisecondsToSRT(startMs),
-                        endTime: millisecondsToSRT(endMs),
-                        text: item.text.trim(),
-                    };
-                });
-                console.log(`✅ Method 1 succeeded: Fetched ${subtitles.length} segments (English)`);
-                return subtitles;
-            }
-        }
-        catch (englishError) {
-            console.log('English captions not found, trying auto-detect...');
-        }
-        // Try auto-generated captions
-        const captions = await (0, youtube_captions_scraper_1.getSubtitles)({
-            videoID: videoId,
-        });
-        if (captions && captions.length > 0) {
-            const subtitles = captions.map((item, index) => {
-                const startMs = Math.floor(parseFloat(item.start) * 1000);
-                const durationMs = Math.floor(parseFloat(item.dur) * 1000);
-                const endMs = startMs + durationMs;
-                return {
-                    index: index + 1,
-                    startTime: millisecondsToSRT(startMs),
-                    endTime: millisecondsToSRT(endMs),
-                    text: item.text.trim(),
-                };
-            });
-            console.log(`✅ Method 1 succeeded: Fetched ${subtitles.length} segments (auto-detect)`);
-            return subtitles;
-        }
-    }
-    catch (method1Error) {
-        console.log('❌ Method 1 failed:', method1Error.message);
-    }
-    // METHOD 2: Fallback to youtube-transcript
-    try {
-        console.log('Attempting Method 2: youtube-transcript...');
-        const transcriptData = await youtube_transcript_1.YoutubeTranscript.fetchTranscript(videoId);
-        if (transcriptData && transcriptData.length > 0) {
-            const subtitles = transcriptData.map((item, index) => {
-                // youtube-transcript returns offset (start) and duration in ms
-                const startMs = Math.floor(item.offset);
-                const durationMs = Math.floor(item.duration);
-                const endMs = startMs + durationMs;
-                return {
-                    index: index + 1,
-                    startTime: millisecondsToSRT(startMs),
-                    endTime: millisecondsToSRT(endMs),
-                    text: item.text.trim(),
-                };
-            });
-            console.log(`✅ Method 2 succeeded: Fetched ${subtitles.length} segments`);
-            return subtitles;
-        }
-    }
-    catch (method2Error) {
-        console.log('❌ Method 2 failed:', method2Error.message);
-    }
-    // All 4 methods failed
-    console.error('❌ All 4 methods failed to fetch transcript');
-    throw new Error('Video không có phụ đề. Chức năng dịch video không có phụ đề đang được phát triển.');
 }
 /**
  * Translate subtitles using Gemini
@@ -372,8 +316,10 @@ Translated subtitles:`;
     return { translatedSubtitles, tokensUsed };
 }
 /**
- * Calculate credits
+ * Calculate credits (OLD - kept for reference)
+ * UNUSED: Now using direct cost calculation from audio tokens
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function calculateCredits(durationSeconds, modelTier, hasTranscript) {
     const durationMinutes = durationSeconds / 60;
     if (hasTranscript) {
@@ -396,6 +342,7 @@ function calculateCredits(durationSeconds, modelTier, hasTranscript) {
  */
 exports.translateVideoSubtitles = functions.https.onRequest((request, response) => {
     corsHandler(request, response, async () => {
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j;
         try {
             // Validate request
             if (request.method !== 'POST') {
@@ -474,13 +421,13 @@ exports.translateVideoSubtitles = functions.https.onRequest((request, response) 
                     return;
                 }
             }
-            // Generate transcript using Gemini
-            console.log('Generating transcript using Gemini AI...');
-            const originalTranscript = await fetchYouTubeTranscript(videoId, youtubeUrl);
+            // Generate transcript from audio using Gemini
+            console.log('Generating transcript from audio using Gemini 2.5 Flash...');
+            const originalTranscript = await generateTranscriptFromAudio(videoId, youtubeUrl);
             if (originalTranscript.length === 0) {
                 response.status(400).json({
                     success: false,
-                    error: 'Failed to generate transcript for this video',
+                    error: 'Failed to generate transcript from video audio',
                 });
                 return;
             }
@@ -489,20 +436,23 @@ exports.translateVideoSubtitles = functions.https.onRequest((request, response) 
             const lastEndTimeMs = parseInt(lastCue.endTime.split(',')[0].split(':').reduce((acc, time) => (acc * 60) + parseInt(time), 0) + '000') + parseInt(lastCue.endTime.split(',')[1]);
             const videoDurationSeconds = Math.ceil(lastEndTimeMs / 1000);
             console.log(`Video duration: ${videoDurationSeconds}s (${Math.floor(videoDurationSeconds / 60)}m)`);
-            // Check duration limits
-            const maxDuration = userTier === 'ULTRA' ? 3600 : 1800; // 60 min or 30 min
-            if (videoDurationSeconds > maxDuration) {
-                response.status(400).json({
-                    success: false,
-                    error: `Video too long (${Math.floor(videoDurationSeconds / 60)} min). Maximum: ${Math.floor(maxDuration / 60)} min for ${userTier} tier`,
-                });
-                return;
-            }
-            // Calculate credits
-            const hasOriginalTranscript = true; // YouTube videos have transcript
-            const modelTier = hasOriginalTranscript ? 'lite' : 'flash';
-            const creditsRequired = calculateCredits(videoDurationSeconds, modelTier, hasOriginalTranscript);
-            console.log(`Credits required: ${creditsRequired} (${modelTier} model)`);
+            // Calculate cost for audio transcription
+            // Gemini 2.5 Flash audio: $1.00 per 1M tokens
+            // 1 second audio ≈ 25 tokens
+            const audioTokens = videoDurationSeconds * 25;
+            const geminiCostUSD = (audioTokens / 1000000) * 1.00; // Base cost
+            // Apply 1.5x margin
+            const COST_MARGIN = 1.5;
+            const finalCostUSD = geminiCostUSD * COST_MARGIN;
+            // Convert to credits ($0.0001 per credit)
+            const CREDIT_CONVERSION_RATE = 0.0001;
+            const creditsRequired = Math.ceil(finalCostUSD / CREDIT_CONVERSION_RATE);
+            console.log(`\n💰 Cost Breakdown:`);
+            console.log(`  Audio tokens: ${audioTokens.toLocaleString()}`);
+            console.log(`  Gemini base cost: $${geminiCostUSD.toFixed(4)}`);
+            console.log(`  With ${COST_MARGIN}x margin: $${finalCostUSD.toFixed(4)}`);
+            console.log(`  Credits required: ${creditsRequired}`);
+            console.log(``);
             // Check user balance
             const userRef = db.collection('users').doc(userId);
             const userSnap = await userRef.get();
@@ -513,31 +463,74 @@ exports.translateVideoSubtitles = functions.https.onRequest((request, response) 
                 });
                 return;
             }
+            // Check credit balance using new credit system
             const userData = userSnap.data();
-            const currentBalance = (userData === null || userData === void 0 ? void 0 : userData.credits) || 0;
-            if (currentBalance < creditsRequired) {
+            const userCredits = userData === null || userData === void 0 ? void 0 : userData.credits;
+            // Calculate total available credits
+            let totalAvailableCredits = 0;
+            if (typeof userCredits === 'object' && userCredits !== null) {
+                // New format
+                totalAvailableCredits = (((_a = userCredits.trial) === null || _a === void 0 ? void 0 : _a.amount) || 0) +
+                    (((_b = userCredits.monthly) === null || _b === void 0 ? void 0 : _b.amount) || 0) +
+                    (((_c = userCredits.purchase) === null || _c === void 0 ? void 0 : _c.amount) || 0);
+            }
+            else if (typeof userCredits === 'number') {
+                // Old format
+                totalAvailableCredits = userCredits;
+            }
+            console.log(`User credit balance: ${totalAvailableCredits} credits`);
+            if (totalAvailableCredits < creditsRequired) {
                 response.status(402).json({
                     success: false,
-                    error: `Insufficient credits. Required: ${creditsRequired}, Available: ${currentBalance}`,
+                    error: `Insufficient credits. Required: ${creditsRequired}, Available: ${totalAvailableCredits}`,
                 });
                 return;
             }
             // Translate subtitles
-            console.log('Translating subtitles...');
-            const { translatedSubtitles, tokensUsed } = await translateSubtitles(originalTranscript, targetLanguage, hasOriginalTranscript);
-            console.log(`Translation complete. Tokens used: ${tokensUsed}`);
-            // Deduct credits
-            await userRef.update({
-                credits: admin.firestore.FieldValue.increment(-creditsRequired),
-            });
+            console.log('Translating subtitles to', targetLanguage, '...');
+            const { translatedSubtitles, tokensUsed } = await translateSubtitles(originalTranscript, targetLanguage, false // No original transcript (generated from audio)
+            );
+            console.log(`Translation complete. Translation tokens used: ${tokensUsed}`);
+            // Deduct credits (priority-based deduction: trial → monthly → purchase)
+            console.log(`Deducting ${creditsRequired} credits...`);
+            // Deduct with priority
+            if (typeof userCredits === 'object' && userCredits !== null) {
+                // New credit format - deduct with priority
+                let remaining = creditsRequired;
+                const trialDeducted = Math.min(remaining, ((_d = userCredits.trial) === null || _d === void 0 ? void 0 : _d.amount) || 0);
+                remaining -= trialDeducted;
+                const monthlyDeducted = Math.min(remaining, ((_e = userCredits.monthly) === null || _e === void 0 ? void 0 : _e.amount) || 0);
+                remaining -= monthlyDeducted;
+                const purchaseDeducted = Math.min(remaining, ((_f = userCredits.purchase) === null || _f === void 0 ? void 0 : _f.amount) || 0);
+                // Update credits
+                await userRef.update({
+                    'credits.trial.amount': (((_g = userCredits.trial) === null || _g === void 0 ? void 0 : _g.amount) || 0) - trialDeducted,
+                    'credits.monthly.amount': (((_h = userCredits.monthly) === null || _h === void 0 ? void 0 : _h.amount) || 0) - monthlyDeducted,
+                    'credits.purchase.amount': (((_j = userCredits.purchase) === null || _j === void 0 ? void 0 : _j.amount) || 0) - purchaseDeducted,
+                    'credits.total': totalAvailableCredits - creditsRequired,
+                });
+                console.log(`✅ Credits deducted: trial=${trialDeducted}, monthly=${monthlyDeducted}, purchase=${purchaseDeducted}`);
+            }
+            else {
+                // Old credit format - simple decrement
+                await userRef.update({
+                    credits: admin.firestore.FieldValue.increment(-creditsRequired),
+                });
+                console.log(`✅ Credits deducted (old format): ${creditsRequired}`);
+            }
             // Save to Firestore
             const translationData = {
                 targetLanguage,
                 translatedTranscript: translatedSubtitles,
                 translatedAt: admin.firestore.FieldValue.serverTimestamp(),
                 translatedBy: userId,
-                modelUsed: modelTier,
-                tokensUsed,
+                modelUsed: 'gemini-2.5-flash', // Audio transcription + translation
+                audioTokens,
+                translationTokens: tokensUsed,
+                totalTokens: audioTokens + tokensUsed,
+                geminiBaseCostUSD: geminiCostUSD,
+                finalCostUSD: finalCostUSD,
+                costMargin: COST_MARGIN,
                 creditsCharged: creditsRequired,
             };
             if (videoSnap.exists) {
@@ -555,13 +548,14 @@ exports.translateVideoSubtitles = functions.https.onRequest((request, response) 
                 await videoRef.set({
                     videoHashId: videoId,
                     videoSource: 'youtube',
-                    videoTitle: `YouTube Video ${videoId}`, // We don't have title from transcript API
+                    videoTitle: `YouTube Video ${videoId}`, // We don't have title from ytdl anymore
                     videoDuration: videoDurationSeconds,
                     thumbnailUrl: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
                     youtubeUrl,
-                    originalLanguage: 'auto', // Auto-detected
-                    originalTranscript,
-                    hasOriginalTranscript: true,
+                    originalLanguage: 'auto', // Auto-detected by Gemini
+                    originalTranscript, // Generated from audio
+                    hasOriginalTranscript: false, // Generated, not from captions
+                    transcriptSource: 'gemini_audio', // Indicate source
                     translations: {
                         [targetLanguage]: translationData,
                     },
@@ -594,13 +588,25 @@ exports.translateVideoSubtitles = functions.https.onRequest((request, response) 
                 wasFree: false,
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
             });
-            console.log(`Translation saved. Credits charged: ${creditsRequired}`);
+            console.log(`✅ Translation completed successfully. Credits charged: ${creditsRequired}`);
             response.status(200).json({
                 success: true,
                 videoHashId: videoId,
                 creditsCharged: creditsRequired,
                 historyId: historyRef.id,
                 message: 'Translation completed successfully',
+                // Cost breakdown for debugging (shown to all users temporarily)
+                costBreakdown: {
+                    videoDurationSeconds,
+                    audioTokens,
+                    translationTokens: tokensUsed,
+                    totalTokens: audioTokens + tokensUsed,
+                    geminiBaseCostUSD: parseFloat(geminiCostUSD.toFixed(6)),
+                    finalCostUSD: parseFloat(finalCostUSD.toFixed(6)),
+                    costMargin: COST_MARGIN,
+                    creditConversionRate: CREDIT_CONVERSION_RATE,
+                    creditsDeducted: creditsRequired,
+                },
             });
         }
         catch (error) {
