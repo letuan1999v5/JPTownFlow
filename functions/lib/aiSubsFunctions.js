@@ -41,8 +41,6 @@ const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const generative_ai_1 = require("@google/generative-ai");
 const cors_1 = __importDefault(require("cors"));
-// @ts-ignore - ytdl-core doesn't have type definitions
-const ytdl_core_1 = __importDefault(require("@distube/ytdl-core"));
 // Initialize CORS
 const corsHandler = (0, cors_1.default)({ origin: true });
 // Gemini API initialization
@@ -130,48 +128,29 @@ function millisecondsToSRT(ms) {
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')},${String(milliseconds).padStart(3, '0')}`;
 }
 /**
- * Generate transcript from YouTube video audio using Gemini
+ * Generate transcript from audio file in Firebase Storage using Gemini
  * This uses Gemini 2.5 Flash for audio transcription
  */
-async function generateTranscriptFromAudio(videoId, videoUrl) {
-    console.log(`Generating transcript from audio for video: ${videoId}`);
+async function generateTranscriptFromStorage(storagePath) {
+    console.log(`Generating transcript from storage: ${storagePath}`);
     try {
-        // Get video info to check duration
-        const info = await ytdl_core_1.default.getInfo(videoUrl);
-        const durationSeconds = parseInt(info.videoDetails.lengthSeconds);
-        console.log(`Video duration: ${durationSeconds}s (${Math.floor(durationSeconds / 60)}m${durationSeconds % 60}s)`);
-        // Get audio stream URL
-        const audioFormat = ytdl_core_1.default.chooseFormat(info.formats, { quality: 'lowestaudio', filter: 'audioonly' });
-        if (!audioFormat || !audioFormat.url) {
-            throw new Error('No audio format available for this video');
+        // Download audio from Storage
+        const bucket = admin.storage().bucket();
+        const file = bucket.file(storagePath);
+        // Check if file exists
+        const [exists] = await file.exists();
+        if (!exists) {
+            throw new Error(`Audio file not found in storage: ${storagePath}`);
         }
-        console.log(`Audio format selected: ${audioFormat.mimeType}, size: ${audioFormat.contentLength} bytes`);
-        // Download audio (first 30 seconds for testing to reduce cost)
-        // TODO: Remove limit when ready for production
-        const https = require('https');
-        const audioChunks = [];
-        let downloadedBytes = 0;
-        const maxBytes = 5 * 1024 * 1024; // 5MB limit for testing
-        await new Promise((resolve, reject) => {
-            https.get(audioFormat.url, (response) => {
-                response.on('data', (chunk) => {
-                    if (downloadedBytes < maxBytes) {
-                        audioChunks.push(chunk);
-                        downloadedBytes += chunk.length;
-                    }
-                    else {
-                        response.destroy(); // Stop downloading
-                        resolve(null);
-                    }
-                });
-                response.on('end', resolve);
-                response.on('error', reject);
-            }).on('error', reject);
-        });
-        const audioBuffer = Buffer.concat(audioChunks);
-        console.log(`Downloaded ${audioBuffer.length} bytes of audio`);
+        // Download file to memory
+        const [audioBuffer] = await file.download();
+        console.log(`Downloaded ${audioBuffer.length} bytes from storage`);
         // Convert to base64 for Gemini
         const audioBase64 = audioBuffer.toString('base64');
+        // Get file metadata for mime type
+        const [metadata] = await file.getMetadata();
+        const mimeType = metadata.contentType || 'audio/mp4';
+        console.log(`Audio file: ${storagePath}, mime type: ${mimeType}, size: ${audioBuffer.length} bytes`);
         // Use Gemini to transcribe audio
         const genAI = getGeminiAPI();
         const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
@@ -194,7 +173,7 @@ Transcribe the audio now:`;
             {
                 inlineData: {
                     data: audioBase64,
-                    mimeType: audioFormat.mimeType || 'audio/mp4',
+                    mimeType,
                 },
             },
         ]);
@@ -224,12 +203,25 @@ Transcribe the audio now:`;
         if (subtitles.length === 0) {
             throw new Error('Failed to parse transcription from Gemini response');
         }
+        // DELETE audio file immediately (copyright compliance)
+        console.log(`Deleting audio file from storage: ${storagePath}`);
+        await file.delete();
+        console.log('✅ Audio file deleted from storage');
         console.log(`✅ Generated ${subtitles.length} subtitle segments from audio`);
         return subtitles;
     }
     catch (error) {
-        console.error('Error generating transcript from audio:', error);
-        throw new Error(`Failed to generate transcript from audio: ${error.message}`);
+        console.error('Error generating transcript from storage:', error);
+        // Try to delete file even if processing failed
+        try {
+            const bucket = admin.storage().bucket();
+            await bucket.file(storagePath).delete();
+            console.log('✅ Cleaned up audio file after error');
+        }
+        catch (deleteError) {
+            console.error('Failed to delete audio file:', deleteError);
+        }
+        throw new Error(`Failed to generate transcript: ${error.message}`);
     }
 }
 /**
@@ -296,7 +288,7 @@ exports.translateVideoSubtitles = functions.https.onRequest((request, response) 
                 response.status(405).json({ success: false, error: 'Method not allowed' });
                 return;
             }
-            const { userId, userTier, videoSource, youtubeUrl, targetLanguage, } = request.body;
+            const { userId, userTier, videoSource, youtubeUrl, videoId: providedVideoId, storagePath, targetLanguage, } = request.body;
             // Validate required fields
             if (!userId || !userTier || !videoSource || !targetLanguage) {
                 response.status(400).json({
@@ -306,23 +298,35 @@ exports.translateVideoSubtitles = functions.https.onRequest((request, response) 
                 return;
             }
             // Only support YouTube for now
-            if (videoSource !== 'youtube' || !youtubeUrl) {
+            if (videoSource !== 'youtube') {
                 response.status(400).json({
                     success: false,
                     error: 'Currently only YouTube videos are supported',
                 });
                 return;
             }
-            // Extract video ID
-            const videoId = extractYouTubeVideoId(youtubeUrl);
+            // Require storagePath for client-side upload
+            if (!storagePath) {
+                response.status(400).json({
+                    success: false,
+                    error: 'Missing storagePath parameter. Please upload audio to Firebase Storage first.',
+                });
+                return;
+            }
+            // Extract video ID from URL or use provided videoId
+            let videoId = providedVideoId;
+            if (!videoId && youtubeUrl) {
+                videoId = extractYouTubeVideoId(youtubeUrl) || undefined;
+            }
             if (!videoId) {
                 response.status(400).json({
                     success: false,
-                    error: 'Invalid YouTube URL',
+                    error: 'Missing videoId parameter',
                 });
                 return;
             }
             console.log(`Processing YouTube video: ${videoId} for user: ${userId}`);
+            console.log(`Audio file location: ${storagePath}`);
             // Check if translation already exists in cache
             const db = admin.firestore();
             const videoRef = db.collection('videos_metadata').doc(videoId);
@@ -368,9 +372,9 @@ exports.translateVideoSubtitles = functions.https.onRequest((request, response) 
                     return;
                 }
             }
-            // Generate transcript from audio using Gemini
-            console.log('Generating transcript from audio using Gemini 2.5 Flash...');
-            const originalTranscript = await generateTranscriptFromAudio(videoId, youtubeUrl);
+            // Generate transcript from audio in Storage using Gemini
+            console.log('Generating transcript from storage using Gemini 2.5 Flash...');
+            const originalTranscript = await generateTranscriptFromStorage(storagePath);
             if (originalTranscript.length === 0) {
                 response.status(400).json({
                     success: false,
