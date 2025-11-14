@@ -144,43 +144,6 @@ function millisecondsToSRT(ms: number): string {
 }
 
 /**
- * Parse YouTube caption XML to SubtitleCue format
- * UNUSED: Kept for reference, caption scraping methods all fail
- */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function parseCaptionXML(xmlText: string): SubtitleCue[] {
-  const subtitles: SubtitleCue[] = [];
-
-  // Simple XML parsing for <text> tags
-  const textMatches = xmlText.matchAll(/<text start="([^"]+)" dur="([^"]+)"[^>]*>([^<]+)<\/text>/g);
-
-  let index = 1;
-  for (const match of textMatches) {
-    const startSeconds = parseFloat(match[1]);
-    const durationSeconds = parseFloat(match[2]);
-    const text = match[3]
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .trim();
-
-    const startMs = Math.floor(startSeconds * 1000);
-    const endMs = Math.floor((startSeconds + durationSeconds) * 1000);
-
-    subtitles.push({
-      index: index++,
-      startTime: millisecondsToSRT(startMs),
-      endTime: millisecondsToSRT(endMs),
-      text: text,
-    });
-  }
-
-  return subtitles;
-}
-
-/**
  * Generate transcript from YouTube video audio using Gemini
  * This uses Gemini 2.5 Flash for audio transcription
  */
@@ -368,33 +331,6 @@ Translated subtitles:`;
   const tokensUsed = response.usageMetadata?.totalTokenCount || 0;
 
   return { translatedSubtitles, tokensUsed };
-}
-
-/**
- * Calculate credits (OLD - kept for reference)
- * UNUSED: Now using direct cost calculation from audio tokens
- */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function calculateCredits(
-  durationSeconds: number,
-  modelTier: 'lite' | 'flash',
-  hasTranscript: boolean
-): number {
-  const durationMinutes = durationSeconds / 60;
-
-  if (hasTranscript) {
-    // Translation only (Lite: $0.40/1M tokens)
-    const estimatedTokens = durationMinutes * 200;
-    const translationCost = (estimatedTokens / 1_000_000) * 0.4;
-    return Math.ceil(translationCost * 3 * 1000);
-  } else {
-    // ASR + Translation (Flash: $0.024/min ASR)
-    const asrCost = durationMinutes * 0.024;
-    const estimatedTokens = durationMinutes * 200;
-    const translationCost = (estimatedTokens / 1_000_000) * 0.4;
-    const totalCost = asrCost + translationCost;
-    return Math.ceil(totalCost * 3 * 1000);
-  }
 }
 
 /**
