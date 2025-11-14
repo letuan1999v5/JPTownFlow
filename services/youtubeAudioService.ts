@@ -3,14 +3,9 @@
 import * as FileSystem from 'expo-file-system';
 import { getStorage, ref, uploadBytesResumable } from 'firebase/storage';
 
-// Invidious public instances (YouTube proxy API)
-// These instances allow downloading YouTube videos without being blocked
-const INVIDIOUS_INSTANCES = [
-  'https://invidious.snopyta.org',
-  'https://yewtu.be',
-  'https://invidious.kavin.rocks',
-  'https://vid.puffyan.us',
-];
+// Cobalt API for downloading YouTube audio
+// More reliable than Invidious instances
+const COBALT_API_URL = 'https://api.cobalt.tools/api/json';
 
 interface DownloadProgress {
   progress: number; // 0-100
@@ -37,69 +32,68 @@ export interface AudioUploadProgress {
 }
 
 /**
- * Get audio URL from YouTube using Invidious API
+ * Get audio URL from YouTube using Cobalt API
+ * Cobalt is a reliable service for downloading YouTube content
  */
-async function getAudioUrlFromInvidious(videoId: string): Promise<{ url: string; durationSeconds: number }> {
-  let lastError: Error | null = null;
+async function getAudioUrlFromCobalt(videoUrl: string): Promise<{ url: string }> {
+  try {
+    console.log('Getting audio URL from Cobalt API...');
 
-  // Try each Invidious instance
-  for (const instance of INVIDIOUS_INSTANCES) {
-    try {
-      console.log(`Trying Invidious instance: ${instance}`);
+    const response = await fetch(COBALT_API_URL, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        url: videoUrl,
+        vCodec: 'h264',
+        vQuality: '360',
+        aFormat: 'mp3',
+        isAudioOnly: true,
+        filenamePattern: 'basic',
+      }),
+    });
 
-      const apiUrl = `${instance}/api/v1/videos/${videoId}`;
-      const response = await fetch(apiUrl, {
-        headers: {
-          'User-Agent': 'JPTownFlow/1.0',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Invidious API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      // Get audio-only format (preferably m4a or webm)
-      const audioFormats = data.adaptiveFormats?.filter((format: any) =>
-        format.type?.startsWith('audio/')
-      ) || [];
-
-      if (audioFormats.length === 0) {
-        throw new Error('No audio formats available');
-      }
-
-      // Sort by quality (prefer higher bitrate)
-      audioFormats.sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0));
-
-      const bestAudio = audioFormats[0];
-      const durationSeconds = parseInt(data.lengthSeconds) || 0;
-
-      console.log(`✅ Found audio URL from ${instance}`);
-      console.log(`Duration: ${durationSeconds}s, Type: ${bestAudio.type}, Size: ${bestAudio.clen} bytes`);
-
-      return {
-        url: bestAudio.url,
-        durationSeconds,
-      };
-
-    } catch (error: any) {
-      console.log(`❌ ${instance} failed:`, error.message);
-      lastError = error;
-      continue; // Try next instance
+    if (!response.ok) {
+      throw new Error(`Cobalt API error: ${response.status}`);
     }
-  }
 
-  // All instances failed
-  throw new Error(
-    `Failed to get audio URL from all Invidious instances.\n\n` +
-    `Last error: ${lastError?.message || 'Unknown error'}\n\n` +
-    `This might be due to:\n` +
-    `• Video is private or age-restricted\n` +
-    `• Video is not available\n` +
-    `• All Invidious instances are down\n\n` +
-    `Please try another video or try again later.`
-  );
+    const data = await response.json();
+
+    // Check response status
+    if (data.status === 'error' || data.status === 'rate-limit') {
+      throw new Error(data.text || 'Failed to get audio URL');
+    }
+
+    if (data.status !== 'redirect' && data.status !== 'stream') {
+      throw new Error(`Unexpected response status: ${data.status}`);
+    }
+
+    const audioUrl = data.url;
+
+    if (!audioUrl) {
+      throw new Error('No audio URL in response');
+    }
+
+    console.log('✅ Got audio URL from Cobalt API');
+
+    return {
+      url: audioUrl,
+    };
+
+  } catch (error: any) {
+    console.error('Cobalt API error:', error);
+    throw new Error(
+      `Failed to get audio URL from Cobalt.\n\n` +
+      `Error: ${error.message}\n\n` +
+      `This might be due to:\n` +
+      `• Video is private or age-restricted\n` +
+      `• Video is not available\n` +
+      `• Service temporarily unavailable\n\n` +
+      `Please try another video or try again later.`
+    );
+  }
 }
 
 /**
@@ -119,7 +113,7 @@ async function downloadAudioToLocal(
       await FileSystem.makeDirectoryAsync(tempDir, { intermediates: true });
     }
 
-    const localUri = `${tempDir}${videoId}.m4a`;
+    const localUri = `${tempDir}${videoId}.mp3`;
 
     console.log('Downloading audio to:', localUri);
 
@@ -183,12 +177,12 @@ async function uploadAudioToStorage(
 
     // Create storage reference
     const storage = getStorage();
-    const storagePath = `temp-audio/${userId}/${videoId}.m4a`;
+    const storagePath = `temp-audio/${userId}/${videoId}.mp3`;
     const storageRef = ref(storage, storagePath);
 
     // Upload with progress tracking
     const uploadTask = uploadBytesResumable(storageRef, blob, {
-      contentType: 'audio/mp4',
+      contentType: 'audio/mpeg',
     });
 
     return new Promise((resolve, reject) => {
@@ -254,14 +248,15 @@ export async function downloadAndUploadYouTubeAudio(
   let localUri: string | null = null;
 
   try {
-    // Stage 1: Get audio URL from Invidious (0-5%)
+    // Stage 1: Get audio URL from Cobalt (0-5%)
     onProgress?.({
       stage: 'downloading',
       progress: 0,
       message: 'Getting video information...',
     });
 
-    const { url: audioUrl, durationSeconds } = await getAudioUrlFromInvidious(videoId);
+    const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    const { url: audioUrl } = await getAudioUrlFromCobalt(videoUrl);
 
     // Stage 2: Download audio (5-40%)
     onProgress?.({
@@ -322,7 +317,7 @@ export async function downloadAndUploadYouTubeAudio(
 
     return {
       storagePath,
-      durationSeconds,
+      durationSeconds: 0, // Will be calculated from audio in Cloud Function
     };
 
   } catch (error: any) {
@@ -338,40 +333,17 @@ export async function downloadAndUploadYouTubeAudio(
 /**
  * Estimate file size and duration from video ID
  * Useful for showing estimates before download
+ *
+ * Note: Returns conservative estimates since we don't fetch metadata upfront
  */
 export async function estimateVideoInfo(videoId: string): Promise<{
   durationSeconds: number;
   estimatedSizeMB: number;
 }> {
-  try {
-    // Try to get info from Invidious without downloading
-    const instance = INVIDIOUS_INSTANCES[0];
-    const apiUrl = `${instance}/api/v1/videos/${videoId}`;
-
-    const response = await fetch(apiUrl);
-
-    if (!response.ok) {
-      throw new Error('Failed to get video info');
-    }
-
-    const data = await response.json();
-    const durationSeconds = parseInt(data.lengthSeconds) || 0;
-
-    // Estimate size: ~1MB per minute for audio
-    const estimatedSizeMB = Math.ceil((durationSeconds / 60) * 1);
-
-    return {
-      durationSeconds,
-      estimatedSizeMB,
-    };
-
-  } catch (error) {
-    console.error('Error estimating video info:', error);
-
-    // Return conservative estimates if API fails
-    return {
-      durationSeconds: 600, // 10 minutes
-      estimatedSizeMB: 10,
-    };
-  }
+  // Return conservative estimates
+  // Actual duration will be calculated from audio file in Cloud Function
+  return {
+    durationSeconds: 600, // 10 minutes estimate
+    estimatedSizeMB: 10,  // ~1MB per minute for audio
+  };
 }
