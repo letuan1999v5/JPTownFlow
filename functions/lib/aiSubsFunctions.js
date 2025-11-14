@@ -41,6 +41,8 @@ const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const generative_ai_1 = require("@google/generative-ai");
 const cors_1 = __importDefault(require("cors"));
+// @ts-ignore - youtubei.js types
+const youtubei_js_1 = require("youtubei.js");
 // @ts-ignore - ytdl-core doesn't have type definitions
 const ytdl_core_1 = __importDefault(require("@distube/ytdl-core"));
 // @ts-ignore - youtube-captions-scraper doesn't have type definitions
@@ -164,13 +166,47 @@ function parseCaptionXML(xmlText) {
 }
 /**
  * Fetch YouTube transcript (captions) from video
- * Uses fallback chain: ytdl-core → youtube-captions-scraper → youtube-transcript
+ * Uses fallback chain: youtubei.js → ytdl-core → youtube-captions-scraper → youtube-transcript
  * This fetches real captions/subtitles from YouTube
  */
 async function fetchYouTubeTranscript(videoId, videoUrl) {
     var _a, _b, _c, _d;
     console.log(`Fetching transcript for video: ${videoId}`);
-    // METHOD 0: Try ytdl-core first (most reliable)
+    // METHOD -1: Try youtubei.js first (uses InnerTube API - most reliable)
+    try {
+        console.log('Attempting Method -1: youtubei.js (InnerTube API)...');
+        const youtube = await youtubei_js_1.Innertube.create();
+        const info = await youtube.getInfo(videoId);
+        // Get transcript
+        const transcriptData = await info.getTranscript();
+        if (transcriptData && transcriptData.transcript) {
+            const content = transcriptData.transcript.content;
+            if (content && content.body) {
+                const segments = content.body.initial_segments;
+                if (segments && segments.length > 0) {
+                    const subtitles = segments.map((segment, index) => {
+                        var _a;
+                        const startMs = Math.floor(segment.start_ms);
+                        const endMs = Math.floor(segment.end_ms);
+                        const text = ((_a = segment.snippet) === null || _a === void 0 ? void 0 : _a.text) || '';
+                        return {
+                            index: index + 1,
+                            startTime: millisecondsToSRT(startMs),
+                            endTime: millisecondsToSRT(endMs),
+                            text: text.trim(),
+                        };
+                    });
+                    console.log(`✅ Method -1 succeeded: Fetched ${subtitles.length} segments`);
+                    return subtitles;
+                }
+            }
+        }
+        console.log('No transcript data found in InnerTube response');
+    }
+    catch (methodMinus1Error) {
+        console.log('❌ Method -1 failed:', methodMinus1Error.message);
+    }
+    // METHOD 0: Try ytdl-core
     try {
         console.log('Attempting Method 0: @distube/ytdl-core...');
         const info = await ytdl_core_1.default.getInfo(videoUrl);
@@ -279,8 +315,8 @@ async function fetchYouTubeTranscript(videoId, videoUrl) {
     catch (method2Error) {
         console.log('❌ Method 2 failed:', method2Error.message);
     }
-    // All 3 methods failed
-    console.error('❌ All 3 methods failed to fetch transcript');
+    // All 4 methods failed
+    console.error('❌ All 4 methods failed to fetch transcript');
     throw new Error('Video không có phụ đề. Chức năng dịch video không có phụ đề đang được phát triển.');
 }
 /**

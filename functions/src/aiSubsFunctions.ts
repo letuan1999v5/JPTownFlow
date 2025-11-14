@@ -2,6 +2,8 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import cors from 'cors';
+// @ts-ignore - youtubei.js types
+import { Innertube } from 'youtubei.js';
 // @ts-ignore - ytdl-core doesn't have type definitions
 import ytdl from '@distube/ytdl-core';
 // @ts-ignore - youtube-captions-scraper doesn't have type definitions
@@ -178,13 +180,54 @@ function parseCaptionXML(xmlText: string): SubtitleCue[] {
 
 /**
  * Fetch YouTube transcript (captions) from video
- * Uses fallback chain: ytdl-core → youtube-captions-scraper → youtube-transcript
+ * Uses fallback chain: youtubei.js → ytdl-core → youtube-captions-scraper → youtube-transcript
  * This fetches real captions/subtitles from YouTube
  */
 async function fetchYouTubeTranscript(videoId: string, videoUrl: string): Promise<SubtitleCue[]> {
   console.log(`Fetching transcript for video: ${videoId}`);
 
-  // METHOD 0: Try ytdl-core first (most reliable)
+  // METHOD -1: Try youtubei.js first (uses InnerTube API - most reliable)
+  try {
+    console.log('Attempting Method -1: youtubei.js (InnerTube API)...');
+
+    const youtube = await Innertube.create();
+    const info = await youtube.getInfo(videoId);
+
+    // Get transcript
+    const transcriptData = await info.getTranscript();
+
+    if (transcriptData && transcriptData.transcript) {
+      const content = transcriptData.transcript.content;
+
+      if (content && content.body) {
+        const segments = content.body.initial_segments;
+
+        if (segments && segments.length > 0) {
+          const subtitles: SubtitleCue[] = segments.map((segment: any, index: number) => {
+            const startMs = Math.floor(segment.start_ms);
+            const endMs = Math.floor(segment.end_ms);
+            const text = segment.snippet?.text || '';
+
+            return {
+              index: index + 1,
+              startTime: millisecondsToSRT(startMs),
+              endTime: millisecondsToSRT(endMs),
+              text: text.trim(),
+            };
+          });
+
+          console.log(`✅ Method -1 succeeded: Fetched ${subtitles.length} segments`);
+          return subtitles;
+        }
+      }
+    }
+
+    console.log('No transcript data found in InnerTube response');
+  } catch (methodMinus1Error: any) {
+    console.log('❌ Method -1 failed:', methodMinus1Error.message);
+  }
+
+  // METHOD 0: Try ytdl-core
   try {
     console.log('Attempting Method 0: @distube/ytdl-core...');
 
@@ -311,8 +354,8 @@ async function fetchYouTubeTranscript(videoId: string, videoUrl: string): Promis
     console.log('❌ Method 2 failed:', method2Error.message);
   }
 
-  // All 3 methods failed
-  console.error('❌ All 3 methods failed to fetch transcript');
+  // All 4 methods failed
+  console.error('❌ All 4 methods failed to fetch transcript');
   throw new Error('Video không có phụ đề. Chức năng dịch video không có phụ đề đang được phát triển.');
 }
 
