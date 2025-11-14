@@ -41,6 +41,8 @@ const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const generative_ai_1 = require("@google/generative-ai");
 const cors_1 = __importDefault(require("cors"));
+// @ts-ignore - ytdl-core doesn't have type definitions
+const ytdl_core_1 = __importDefault(require("@distube/ytdl-core"));
 // @ts-ignore - youtube-captions-scraper doesn't have type definitions
 const youtube_captions_scraper_1 = require("youtube-captions-scraper");
 // @ts-ignore - youtube-transcript doesn't have type definitions
@@ -132,13 +134,77 @@ function millisecondsToSRT(ms) {
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')},${String(milliseconds).padStart(3, '0')}`;
 }
 /**
+ * Parse YouTube caption XML to SubtitleCue format
+ */
+function parseCaptionXML(xmlText) {
+    const subtitles = [];
+    // Simple XML parsing for <text> tags
+    const textMatches = xmlText.matchAll(/<text start="([^"]+)" dur="([^"]+)"[^>]*>([^<]+)<\/text>/g);
+    let index = 1;
+    for (const match of textMatches) {
+        const startSeconds = parseFloat(match[1]);
+        const durationSeconds = parseFloat(match[2]);
+        const text = match[3]
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'")
+            .trim();
+        const startMs = Math.floor(startSeconds * 1000);
+        const endMs = Math.floor((startSeconds + durationSeconds) * 1000);
+        subtitles.push({
+            index: index++,
+            startTime: millisecondsToSRT(startMs),
+            endTime: millisecondsToSRT(endMs),
+            text: text,
+        });
+    }
+    return subtitles;
+}
+/**
  * Fetch YouTube transcript (captions) from video
- * Uses fallback chain: youtube-captions-scraper → youtube-transcript
+ * Uses fallback chain: ytdl-core → youtube-captions-scraper → youtube-transcript
  * This fetches real captions/subtitles from YouTube
  */
 async function fetchYouTubeTranscript(videoId, videoUrl) {
+    var _a, _b, _c, _d;
     console.log(`Fetching transcript for video: ${videoId}`);
-    // METHOD 1: Try youtube-captions-scraper first
+    // METHOD 0: Try ytdl-core first (most reliable)
+    try {
+        console.log('Attempting Method 0: @distube/ytdl-core...');
+        const info = await ytdl_core_1.default.getInfo(videoUrl);
+        // Get caption tracks
+        const captionTracks = (_c = (_b = (_a = info.player_response) === null || _a === void 0 ? void 0 : _a.captions) === null || _b === void 0 ? void 0 : _b.playerCaptionsTracklistRenderer) === null || _c === void 0 ? void 0 : _c.captionTracks;
+        if (captionTracks && captionTracks.length > 0) {
+            console.log(`Found ${captionTracks.length} caption tracks`);
+            // Prefer English, then first available
+            let selectedTrack = captionTracks.find((t) => t.languageCode === 'en') || captionTracks[0];
+            console.log(`Using caption: ${((_d = selectedTrack.name) === null || _d === void 0 ? void 0 : _d.simpleText) || selectedTrack.languageCode}`);
+            // Fetch caption XML
+            const https = require('https');
+            const captionXML = await new Promise((resolve, reject) => {
+                https.get(selectedTrack.baseUrl, (res) => {
+                    let data = '';
+                    res.on('data', (chunk) => data += chunk);
+                    res.on('end', () => resolve(data));
+                    res.on('error', reject);
+                }).on('error', reject);
+            });
+            const subtitles = parseCaptionXML(captionXML);
+            if (subtitles.length > 0) {
+                console.log(`✅ Method 0 succeeded: Fetched ${subtitles.length} segments`);
+                return subtitles;
+            }
+        }
+        else {
+            console.log('No caption tracks found in video info');
+        }
+    }
+    catch (method0Error) {
+        console.log('❌ Method 0 failed:', method0Error.message);
+    }
+    // METHOD 1: Try youtube-captions-scraper
     try {
         console.log('Attempting Method 1: youtube-captions-scraper...');
         // Try English first
@@ -213,8 +279,8 @@ async function fetchYouTubeTranscript(videoId, videoUrl) {
     catch (method2Error) {
         console.log('❌ Method 2 failed:', method2Error.message);
     }
-    // Both methods failed
-    console.error('❌ All methods failed to fetch transcript');
+    // All 3 methods failed
+    console.error('❌ All 3 methods failed to fetch transcript');
     throw new Error('Video không có phụ đề. Chức năng dịch video không có phụ đề đang được phát triển.');
 }
 /**

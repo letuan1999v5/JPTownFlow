@@ -2,6 +2,8 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import cors from 'cors';
+// @ts-ignore - ytdl-core doesn't have type definitions
+import ytdl from '@distube/ytdl-core';
 // @ts-ignore - youtube-captions-scraper doesn't have type definitions
 import { getSubtitles } from 'youtube-captions-scraper';
 // @ts-ignore - youtube-transcript doesn't have type definitions
@@ -140,14 +142,90 @@ function millisecondsToSRT(ms: number): string {
 }
 
 /**
+ * Parse YouTube caption XML to SubtitleCue format
+ */
+function parseCaptionXML(xmlText: string): SubtitleCue[] {
+  const subtitles: SubtitleCue[] = [];
+
+  // Simple XML parsing for <text> tags
+  const textMatches = xmlText.matchAll(/<text start="([^"]+)" dur="([^"]+)"[^>]*>([^<]+)<\/text>/g);
+
+  let index = 1;
+  for (const match of textMatches) {
+    const startSeconds = parseFloat(match[1]);
+    const durationSeconds = parseFloat(match[2]);
+    const text = match[3]
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .trim();
+
+    const startMs = Math.floor(startSeconds * 1000);
+    const endMs = Math.floor((startSeconds + durationSeconds) * 1000);
+
+    subtitles.push({
+      index: index++,
+      startTime: millisecondsToSRT(startMs),
+      endTime: millisecondsToSRT(endMs),
+      text: text,
+    });
+  }
+
+  return subtitles;
+}
+
+/**
  * Fetch YouTube transcript (captions) from video
- * Uses fallback chain: youtube-captions-scraper → youtube-transcript
+ * Uses fallback chain: ytdl-core → youtube-captions-scraper → youtube-transcript
  * This fetches real captions/subtitles from YouTube
  */
 async function fetchYouTubeTranscript(videoId: string, videoUrl: string): Promise<SubtitleCue[]> {
   console.log(`Fetching transcript for video: ${videoId}`);
 
-  // METHOD 1: Try youtube-captions-scraper first
+  // METHOD 0: Try ytdl-core first (most reliable)
+  try {
+    console.log('Attempting Method 0: @distube/ytdl-core...');
+
+    const info = await ytdl.getInfo(videoUrl);
+
+    // Get caption tracks
+    const captionTracks = info.player_response?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+
+    if (captionTracks && captionTracks.length > 0) {
+      console.log(`Found ${captionTracks.length} caption tracks`);
+
+      // Prefer English, then first available
+      let selectedTrack = captionTracks.find((t: any) => t.languageCode === 'en') || captionTracks[0];
+
+      console.log(`Using caption: ${selectedTrack.name?.simpleText || selectedTrack.languageCode}`);
+
+      // Fetch caption XML
+      const https = require('https');
+      const captionXML = await new Promise<string>((resolve, reject) => {
+        https.get(selectedTrack.baseUrl, (res: any) => {
+          let data = '';
+          res.on('data', (chunk: any) => data += chunk);
+          res.on('end', () => resolve(data));
+          res.on('error', reject);
+        }).on('error', reject);
+      });
+
+      const subtitles = parseCaptionXML(captionXML);
+
+      if (subtitles.length > 0) {
+        console.log(`✅ Method 0 succeeded: Fetched ${subtitles.length} segments`);
+        return subtitles;
+      }
+    } else {
+      console.log('No caption tracks found in video info');
+    }
+  } catch (method0Error: any) {
+    console.log('❌ Method 0 failed:', method0Error.message);
+  }
+
+  // METHOD 1: Try youtube-captions-scraper
   try {
     console.log('Attempting Method 1: youtube-captions-scraper...');
 
@@ -233,8 +311,8 @@ async function fetchYouTubeTranscript(videoId: string, videoUrl: string): Promis
     console.log('❌ Method 2 failed:', method2Error.message);
   }
 
-  // Both methods failed
-  console.error('❌ All methods failed to fetch transcript');
+  // All 3 methods failed
+  console.error('❌ All 3 methods failed to fetch transcript');
   throw new Error('Video không có phụ đề. Chức năng dịch video không có phụ đề đang được phát triển.');
 }
 
