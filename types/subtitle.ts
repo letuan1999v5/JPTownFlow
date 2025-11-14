@@ -86,7 +86,11 @@ export interface TranslationRequest {
   // Video source
   videoSource: 'youtube' | 'upload';
   youtubeUrl?: string;
+  videoId?: string; // YouTube video ID (for caching)
   uploadedFileHash?: string;
+
+  // Audio from Firebase Storage (client-side upload)
+  storagePath?: string; // Path to audio in Firebase Storage (e.g., temp-audio/{userId}/{videoId}.m4a)
 
   // Translation settings
   targetLanguage: TargetLanguage;

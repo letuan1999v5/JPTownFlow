@@ -18,6 +18,7 @@ import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import { CreditDisplay, CreditInfoModal } from '../components/credits';
 import { translateVideoSubtitles, checkTranslationCache, calculateCredits } from '../services/aiSubsService';
+import { downloadAndUploadYouTubeAudio, AudioUploadProgress } from '../services/youtubeAudioService';
 import { TranslationRequest } from '../types/subtitle';
 
 type TargetLanguage = 'ja' | 'en' | 'vi' | 'zh' | 'ko' | 'pt' | 'es' | 'fil' | 'th' | 'id';
@@ -44,6 +45,7 @@ export default function AISubsScreen() {
   const [showCreditInfo, setShowCreditInfo] = useState(false);
   const [loading, setLoading] = useState(false);
   const [processingStep, setProcessingStep] = useState('');
+  const [uploadProgress, setUploadProgress] = useState(0); // 0-100
 
   // Language options (10 languages supported by app)
   const languages: LanguageOption[] = [
@@ -173,25 +175,45 @@ export default function AISubsScreen() {
   // Process video translation
   const processVideoTranslation = async (videoId: string) => {
     setLoading(true);
+    setUploadProgress(0);
 
     try {
       if (!user) {
         throw new Error('User not authenticated');
       }
 
-      setProcessingStep(t('fetchingTranscript', 'Fetching transcript...'));
+      // Stage 1 & 2: Download audio and upload to Storage (0-80%)
+      setProcessingStep(t('downloadingAudio', 'Downloading audio...'));
+
+      const { storagePath, durationSeconds } = await downloadAndUploadYouTubeAudio(
+        videoId,
+        user.uid,
+        (progress: AudioUploadProgress) => {
+          setUploadProgress(progress.progress);
+          setProcessingStep(progress.message);
+        }
+      );
+
+      console.log('Audio uploaded to:', storagePath);
+      console.log('Video duration:', durationSeconds, 'seconds');
+
+      // Stage 3: Call Cloud Function to process (80-100%)
+      setUploadProgress(80);
+      setProcessingStep(t('translating', 'Translating subtitles...'));
 
       const request: TranslationRequest = {
         userId: user.uid,
         userTier,
         videoSource: 'youtube',
         youtubeUrl,
+        videoId,
+        storagePath,
         targetLanguage,
       };
 
-      setProcessingStep(t('translating', 'Translating subtitles...'));
-
       const result = await translateVideoSubtitles(request);
+
+      setUploadProgress(100);
 
       if (result.success) {
         // Refresh credit balance
@@ -255,6 +277,7 @@ export default function AISubsScreen() {
     } finally {
       setLoading(false);
       setProcessingStep('');
+      setUploadProgress(0);
     }
   };
 
@@ -398,6 +421,16 @@ export default function AISubsScreen() {
               : t('generateSubtitles', 'Generate Subtitles')}
           </Text>
         </TouchableOpacity>
+
+        {/* Progress Bar */}
+        {loading && uploadProgress > 0 && (
+          <View style={styles.progressContainer}>
+            <View style={styles.progressBar}>
+              <View style={[styles.progressFill, { width: `${uploadProgress}%` }]} />
+            </View>
+            <Text style={styles.progressText}>{Math.round(uploadProgress)}%</Text>
+          </View>
+        )}
 
         {/* How it works */}
         <View style={styles.howItWorks}>
@@ -612,6 +645,27 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  progressContainer: {
+    marginBottom: 24,
+  },
+  progressBar: {
+    height: 8,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#EF4444',
+    borderRadius: 4,
+  },
+  progressText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#DC2626',
+    textAlign: 'center',
   },
   howItWorks: {
     backgroundColor: '#FFFFFF',
