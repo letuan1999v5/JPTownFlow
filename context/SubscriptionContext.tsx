@@ -24,6 +24,7 @@ import {
   checkAndResetCredits,
   initializeCreditBalance
 } from '../services/creditsService';
+import { CreditBalance as OldCreditBalance } from '../types/credits';
 import {
   checkAndTransitionSubscription,
   changeSubscription,
@@ -43,6 +44,20 @@ interface SubscriptionContextType {
 }
 
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
+
+/**
+ * Convert old credit balance format to new format
+ */
+function convertOldToNewCreditBalance(oldBalance: OldCreditBalance): CreditBalance {
+  return {
+    trial: 0, // Old format doesn't have trial credits
+    monthly: (oldBalance.monthlyCredits || 0) + (oldBalance.carryoverCredits || 0), // Combine time-limited credits
+    purchase: oldBalance.extraCredits || 0, // Purchased credits never expire
+    total: (oldBalance.monthlyCredits || 0) + (oldBalance.carryoverCredits || 0) + (oldBalance.extraCredits || 0),
+    trialExpiresAt: null,
+    monthlyResetAt: oldBalance.carryoverExpiryDate ? oldBalance.carryoverExpiryDate as any : null,
+  };
+}
 
 export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { user } = useAuth();
@@ -91,12 +106,21 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
         // Fallback to old service if new returns null
         if (!balance) {
           console.log('[SubscriptionContext] Falling back to old credit service');
-          balance = await getOldCreditBalance(user.uid);
+          const oldBalance = await getOldCreditBalance(user.uid);
+          if (oldBalance) {
+            // Convert old format to new format
+            balance = convertOldToNewCreditBalance(oldBalance);
+            console.log('[SubscriptionContext] Converted old credit format to new format:', balance);
+          }
         }
 
-        // If still no balance, initialize
+        // If still no balance, initialize with new format
         if (!balance) {
-          balance = await initializeCreditBalance(user.uid, userTier);
+          const initBalance = await initializeCreditBalance(user.uid, userTier);
+          if (initBalance) {
+            // Convert initialized old format to new format
+            balance = convertOldToNewCreditBalance(initBalance);
+          }
         }
 
         setCreditBalance(balance);
@@ -180,7 +204,11 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
       // Fallback to old service if needed
       if (!balance && subscription) {
         const activeTier = getActiveTier(subscription);
-        balance = await checkAndResetCredits(user.uid, activeTier);
+        const oldBalance = await checkAndResetCredits(user.uid, activeTier);
+        if (oldBalance) {
+          // Convert old format to new format
+          balance = convertOldToNewCreditBalance(oldBalance);
+        }
       }
 
       if (balance) {

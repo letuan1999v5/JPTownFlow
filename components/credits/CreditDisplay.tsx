@@ -39,17 +39,18 @@ export const CreditDisplay: React.FC<CreditDisplayProps> = ({
   }
 
   // Credit xanh (có thời hạn): trial + monthly (gộp cả trial vào monthly)
-  const greenCredits = creditBalance.trial + creditBalance.monthly;
+  // Safe navigation to prevent NaN
+  const greenCredits = (creditBalance.trial || 0) + (creditBalance.monthly || 0);
 
   // Credit vàng (không thời hạn): purchase
-  const yellowCredits = creditBalance.purchase;
+  const yellowCredits = creditBalance.purchase || 0;
 
-  const totalCredits = creditBalance.total;
+  const totalCredits = creditBalance.total || 0;
 
   // Format expiry date for display
   const formatExpiryDate = () => {
     // Ưu tiên monthly expiry, nếu không có thì dùng trial expiry
-    const expiryDate = creditBalance.monthlyResetAt || creditBalance.trialExpiresAt;
+    const expiryDate = creditBalance?.monthlyResetAt || creditBalance?.trialExpiresAt;
 
     if (!expiryDate) return null;
 
