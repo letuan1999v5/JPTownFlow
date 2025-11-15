@@ -128,41 +128,41 @@ export default function YouTubeSubtitlePlayer({
     /* Subtitle overlay - use absolute positioning to stay within container */
     #subtitle-overlay {
       position: absolute;
-      bottom: 40px; /* Portrait default */
+      bottom: 10px; /* Very close to bottom */
       left: 0;
       right: 0;
       text-align: center;
       pointer-events: none;
-      z-index: 9999;
+      z-index: 999999; /* Much higher than YouTube controls */
       padding: 0 16px;
     }
 
     #subtitle-text {
       display: inline-block;
-      background: rgba(0, 0, 0, 0.8);
+      background: rgba(0, 0, 0, 0.9); /* Darker background for better visibility */
       color: #fff;
-      font-size: 14px; /* Smaller, less intrusive */
-      font-weight: 500;
+      font-size: 14px;
+      font-weight: 600; /* Bolder for better readability */
       line-height: 1.4;
-      padding: 6px 12px;
+      padding: 8px 14px;
       border-radius: 4px;
-      max-width: 85%;
+      max-width: 90%;
       word-wrap: break-word;
-      text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.9);
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 1);
+      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.8);
     }
 
     /* Landscape mode - responsive via CSS media query */
     @media (orientation: landscape) {
       #subtitle-overlay {
-        bottom: 50px;
-        padding: 0 40px;
+        bottom: 15px; /* Slightly higher in landscape for controls */
+        padding: 0 30px;
       }
 
       #subtitle-text {
         font-size: 16px;
-        padding: 8px 16px;
-        max-width: 80%;
+        padding: 10px 18px;
+        max-width: 85%;
       }
     }
 
@@ -352,10 +352,13 @@ export default function YouTubeSubtitlePlayer({
           fullscreenElement.appendChild(subtitleOverlay);
         }
 
-        // Force fixed positioning in fullscreen
+        // Force fixed positioning in fullscreen with very low bottom (near video bottom)
         subtitleOverlay.style.position = 'fixed';
-        subtitleOverlay.style.bottom = '80px';
-        subtitleOverlay.style.zIndex = '2147483647';
+        subtitleOverlay.style.bottom = '20px'; // Very close to bottom in fullscreen
+        subtitleOverlay.style.left = '0';
+        subtitleOverlay.style.right = '0';
+        subtitleOverlay.style.zIndex = '2147483647'; // Maximum z-index
+        subtitleOverlay.style.pointerEvents = 'none'; // Don't block controls
       } else {
         console.log('Exited fullscreen - restoring subtitle overlay');
         // Move subtitle back to container
@@ -366,8 +369,8 @@ export default function YouTubeSubtitlePlayer({
 
         // Restore normal positioning
         subtitleOverlay.style.position = 'absolute';
-        subtitleOverlay.style.bottom = '40px';
-        subtitleOverlay.style.zIndex = '9999';
+        subtitleOverlay.style.bottom = '10px'; // Match CSS default
+        subtitleOverlay.style.zIndex = '999999'; // Match CSS default
       }
     }
 
