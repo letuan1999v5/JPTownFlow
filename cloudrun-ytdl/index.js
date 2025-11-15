@@ -32,7 +32,7 @@ async function ensureTempDir() {
 }
 
 /**
- * Download YouTube audio using yt-dlp
+ * Download YouTube subtitles (text only) using yt-dlp
  * POST /download
  * Body: { videoId: string, userId: string }
  */
@@ -46,57 +46,55 @@ app.post('/download', async (req, res) => {
     });
   }
 
-  console.log(`Downloading audio for video: ${videoId}, user: ${userId}`);
+  console.log(`Downloading subtitles for video: ${videoId}, user: ${userId}`);
 
   const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-  const outputPath = path.join(TEMP_DIR, `${videoId}.mp3`);
+  const outputPath = path.join(TEMP_DIR, `${videoId}.srt`);
 
   try {
     // Ensure temp directory exists
     await ensureTempDir();
 
-    // Download audio using yt-dlp with multiple fallback strategies
-    // Try different player clients in order: iOS, Android+iOS+Web fallback, then default
+    // Download ONLY subtitles using yt-dlp (no audio/video download)
+    // Multiple fallback strategies for subtitle extraction
     const strategies = [
       {
-        name: 'iOS client',
-        args: '--extractor-args "youtube:player_client=ios"',
+        name: 'Auto-generated subtitles (en)',
+        args: '--write-auto-sub --sub-lang en --skip-download --sub-format srt',
       },
       {
-        name: 'Multi-client fallback (android,ios,web)',
-        args: '--extractor-args "youtube:player_client=android,ios,web"',
+        name: 'Manual subtitles (en)',
+        args: '--write-sub --sub-lang en --skip-download --sub-format srt',
       },
       {
-        name: 'Android creator client',
-        args: '--extractor-args "youtube:player_client=android_creator"',
+        name: 'Auto-generated subtitles (any language)',
+        args: '--write-auto-sub --skip-download --sub-format srt',
       },
       {
-        name: 'Default (no client override)',
-        args: '',
+        name: 'Manual subtitles (any language)',
+        args: '--write-sub --skip-download --sub-format srt',
       },
     ];
 
     let lastError = null;
     let downloadSuccess = false;
+    let actualSubtitlePath = null;
 
     for (const strategy of strategies) {
       try {
         console.log(`Trying strategy: ${strategy.name}`);
 
-        // Build yt-dlp command
-        // -x: Extract audio
-        // --audio-format mp3: Convert to MP3
-        // --audio-quality 9: Lowest quality (smallest file)
+        // Build yt-dlp command for subtitle download only
+        // --write-auto-sub: Download auto-generated subtitles
+        // --write-sub: Download manual subtitles
+        // --skip-download: Skip video/audio download
+        // --sub-format srt: Subtitle format
         // -o: Output template
-        // --no-playlist: Don't download playlist
-        const baseCommand = `yt-dlp -x --audio-format mp3 --audio-quality 9 -o "${outputPath}" --no-playlist`;
-        const ytdlCommand = strategy.args
-          ? `${baseCommand} ${strategy.args} "${videoUrl}"`
-          : `${baseCommand} "${videoUrl}"`;
+        const ytdlCommand = `yt-dlp ${strategy.args} -o "${TEMP_DIR}/${videoId}" "${videoUrl}"`;
 
         console.log(`Executing: ${ytdlCommand}`);
         const { stdout, stderr } = await execPromise(ytdlCommand, {
-          timeout: 300000, // 5 minutes timeout
+          timeout: 60000, // 1 minute timeout (subtitles are fast)
         });
 
         console.log('yt-dlp stdout:', stdout);
@@ -104,56 +102,54 @@ app.post('/download', async (req, res) => {
           console.log('yt-dlp stderr:', stderr);
         }
 
-        // Check if download succeeded
-        try {
-          const stats = await fs.stat(outputPath);
+        // yt-dlp creates files like: {videoId}.en.srt or {videoId}.en.vtt
+        // Find the subtitle file
+        const files = await fs.readdir(TEMP_DIR);
+        const subtitleFile = files.find(f =>
+          f.startsWith(videoId) &&
+          (f.endsWith('.srt') || f.endsWith('.vtt'))
+        );
+
+        if (subtitleFile) {
+          actualSubtitlePath = path.join(TEMP_DIR, subtitleFile);
+          const stats = await fs.stat(actualSubtitlePath);
+
           if (stats && stats.size > 0) {
-            console.log(`✅ Success with ${strategy.name}: ${stats.size} bytes`);
+            console.log(`✅ Success with ${strategy.name}: ${subtitleFile} (${stats.size} bytes)`);
             downloadSuccess = true;
             break;
           }
-        } catch (statError) {
-          // File doesn't exist, try next strategy
-          console.log(`File not created with ${strategy.name}, trying next...`);
-          continue;
         }
+
+        console.log(`No subtitle file found with ${strategy.name}, trying next...`);
       } catch (error) {
         console.log(`❌ Failed with ${strategy.name}: ${error.message}`);
         lastError = error;
-
-        // Clean up failed attempt
-        try {
-          await fs.unlink(outputPath);
-        } catch (cleanupError) {
-          // Ignore
-        }
-
-        // Continue to next strategy
         continue;
       }
     }
 
-    if (!downloadSuccess) {
-      throw new Error(`All download strategies failed. Last error: ${lastError?.message || 'Unknown error'}`);
+    if (!downloadSuccess || !actualSubtitlePath) {
+      throw new Error(`All subtitle download strategies failed. Video may not have subtitles. Last error: ${lastError?.message || 'Unknown error'}`);
     }
 
-    // Check if file was downloaded
-    const stats = await fs.stat(outputPath);
-    if (!stats || stats.size === 0) {
-      throw new Error('Downloaded file is empty or does not exist');
+    // Read subtitle content
+    const subtitleContent = await fs.readFile(actualSubtitlePath, 'utf-8');
+
+    if (!subtitleContent || subtitleContent.trim().length === 0) {
+      throw new Error('Downloaded subtitle file is empty');
     }
 
-    console.log(`Audio downloaded: ${stats.size} bytes`);
+    console.log(`Subtitle content length: ${subtitleContent.length} characters`);
 
     // Upload to Firebase Storage
     const bucket = admin.storage().bucket();
-    const storagePath = `temp-audio/${userId}/${videoId}.mp3`;
+    const storagePath = `temp-subtitles/${userId}/${videoId}.srt`;
     const destination = bucket.file(storagePath);
 
-    await bucket.upload(outputPath, {
-      destination: storagePath,
+    await destination.save(subtitleContent, {
+      contentType: 'text/plain',
       metadata: {
-        contentType: 'audio/mpeg',
         metadata: {
           videoId,
           userId,
@@ -163,20 +159,22 @@ app.post('/download', async (req, res) => {
 
     console.log(`✅ Uploaded to Storage: ${storagePath}`);
 
-    // Get duration from yt-dlp info
+    // Get video duration from yt-dlp info
     let durationSeconds = 0;
     try {
       const infoCommand = `yt-dlp --print duration "${videoUrl}"`;
-      const { stdout: durationOutput } = await execPromise(infoCommand);
+      const { stdout: durationOutput } = await execPromise(infoCommand, {
+        timeout: 30000,
+      });
       durationSeconds = parseInt(durationOutput.trim()) || 0;
       console.log(`Video duration: ${durationSeconds}s`);
     } catch (error) {
-      console.warn('Failed to get duration, will calculate from audio:', error.message);
+      console.warn('Failed to get duration:', error.message);
     }
 
     // Clean up local file
     try {
-      await fs.unlink(outputPath);
+      await fs.unlink(actualSubtitlePath);
       console.log('✅ Cleaned up local file');
     } catch (error) {
       console.warn('Failed to clean up local file:', error);
@@ -187,22 +185,27 @@ app.post('/download', async (req, res) => {
       success: true,
       storagePath,
       durationSeconds,
-      fileSize: stats.size,
+      fileSize: subtitleContent.length,
     });
 
   } catch (error) {
-    console.error('Error downloading audio:', error);
+    console.error('Error downloading subtitles:', error);
 
     // Clean up on error
     try {
-      await fs.unlink(outputPath);
+      const files = await fs.readdir(TEMP_DIR);
+      for (const file of files) {
+        if (file.startsWith(videoId)) {
+          await fs.unlink(path.join(TEMP_DIR, file));
+        }
+      }
     } catch (cleanupError) {
       // Ignore cleanup errors
     }
 
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to download audio',
+      error: error.message || 'Failed to download subtitles',
     });
   }
 });

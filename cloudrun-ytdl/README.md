@@ -1,18 +1,20 @@
-# YouTube Audio Download Service (Cloud Run + yt-dlp)
+# YouTube Subtitle Download Service (Cloud Run + yt-dlp)
 
-Production-ready Cloud Run service for downloading YouTube audio using yt-dlp.
+Production-ready Cloud Run service for downloading YouTube subtitles (text only) using yt-dlp.
 
 ## Features
 
-- ✅ Uses yt-dlp (most powerful YouTube downloader)
-- ✅ Multiple fallback strategies to bypass YouTube bot detection:
-  - iOS client
-  - Multi-client fallback (android+ios+web)
-  - Android creator client
-  - Default client
+- ✅ Uses yt-dlp (well-maintained by large team)
+- ✅ Downloads ONLY subtitles (no audio/video) - minimal ToS concerns
+- ✅ Multiple fallback strategies:
+  - Auto-generated subtitles (English)
+  - Manual subtitles (English)
+  - Auto-generated subtitles (any language)
+  - Manual subtitles (any language)
 - ✅ Uploads directly to Firebase Storage
 - ✅ Auto-cleanup of temporary files
 - ✅ Scalable with Cloud Run
+- ✅ Fast (subtitles are small text files)
 
 ## Prerequisites
 
@@ -73,7 +75,7 @@ Save this URL - you'll need it for Cloud Function configuration.
 
 ### POST /download
 
-Download YouTube audio and upload to Firebase Storage.
+Download YouTube subtitles (text only) and upload to Firebase Storage.
 
 **Request:**
 ```json
@@ -87,9 +89,9 @@ Download YouTube audio and upload to Firebase Storage.
 ```json
 {
   "success": true,
-  "storagePath": "temp-audio/userId/videoId.mp3",
+  "storagePath": "temp-subtitles/userId/videoId.srt",
   "durationSeconds": 600,
-  "fileSize": 12345678
+  "fileSize": 45678
 }
 ```
 

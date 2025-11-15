@@ -40,7 +40,6 @@ exports.translateVideoSubtitles = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const generative_ai_1 = require("@google/generative-ai");
-const googleapis_1 = require("googleapis");
 const cors_1 = __importDefault(require("cors"));
 // Initialize CORS
 const corsHandler = (0, cors_1.default)({ origin: true });
@@ -119,72 +118,63 @@ function extractYouTubeVideoId(url) {
     return null;
 }
 /**
- * Fetch YouTube captions using YouTube Data API v3
- * This is the ONLY officially supported method by YouTube
+ * Fetch YouTube subtitles using yt-dlp via Cloud Run service
+ * Downloads ONLY subtitle text (no audio/video)
  */
-async function fetchYouTubeCaptions(videoId) {
-    var _a, _b, _c;
-    console.log(`Fetching captions for YouTube video: ${videoId}`);
+async function fetchYouTubeSubtitles(videoId, userId) {
+    var _a;
+    console.log(`Fetching subtitles for YouTube video: ${videoId} via yt-dlp`);
     try {
-        // Get YouTube Data API key
-        const apiKey = ((_a = functions.config().youtube) === null || _a === void 0 ? void 0 : _a.apikey) || process.env.YOUTUBE_API_KEY;
-        if (!apiKey) {
-            throw new Error('YouTube Data API key not configured. Set with: firebase functions:config:set youtube.apikey="YOUR_API_KEY"');
+        // Get Cloud Run service URL
+        const cloudRunUrl = ((_a = functions.config().ytdl) === null || _a === void 0 ? void 0 : _a.serviceurl) || process.env.YTDL_SERVICE_URL;
+        if (!cloudRunUrl) {
+            throw new Error('Cloud Run service URL not configured. Set with: firebase functions:config:set ytdl.serviceurl="https://your-service-url"');
         }
-        // Initialize YouTube API client
-        const youtube = googleapis_1.google.youtube({
-            version: 'v3',
-            auth: apiKey,
+        console.log(`Calling Cloud Run service: ${cloudRunUrl}/download`);
+        // Call Cloud Run service to download subtitles
+        const response = await fetch(`${cloudRunUrl}/download`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                videoId,
+                userId,
+            }),
         });
-        // Step 1: List available caption tracks
-        console.log('Listing available caption tracks...');
-        const captionsListResponse = await youtube.captions.list({
-            part: ['snippet'],
-            videoId,
-        });
-        const captionTracks = captionsListResponse.data.items || [];
-        if (captionTracks.length === 0) {
-            throw new Error('NO_CAPTIONS_AVAILABLE');
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Cloud Run service error (${response.status}): ${errorText}`);
         }
-        console.log(`Found ${captionTracks.length} caption tracks`);
-        // Prioritize caption tracks: 1) Manual uploaded, 2) Auto-generated (ASR)
-        // Find best caption track (prefer non-ASR, then ASR)
-        let selectedTrack = captionTracks.find(track => { var _a; return ((_a = track.snippet) === null || _a === void 0 ? void 0 : _a.trackKind) !== 'asr'; });
-        if (!selectedTrack) {
-            selectedTrack = captionTracks.find(track => { var _a; return ((_a = track.snippet) === null || _a === void 0 ? void 0 : _a.trackKind) === 'asr'; });
+        const result = await response.json();
+        if (!result.success) {
+            throw new Error(result.error || 'Cloud Run service returned failure');
         }
-        if (!selectedTrack || !selectedTrack.id) {
-            throw new Error('No suitable caption track found');
+        console.log(`✅ Subtitles downloaded via Cloud Run: ${result.storagePath}`);
+        // Download subtitle file from Storage
+        const bucket = admin.storage().bucket();
+        const file = bucket.file(result.storagePath);
+        const [exists] = await file.exists();
+        if (!exists) {
+            throw new Error(`Subtitle file not found in storage: ${result.storagePath}`);
         }
-        const trackKind = ((_b = selectedTrack.snippet) === null || _b === void 0 ? void 0 : _b.trackKind) || 'unknown';
-        const language = ((_c = selectedTrack.snippet) === null || _c === void 0 ? void 0 : _c.language) || 'unknown';
-        console.log(`Selected caption track: ${selectedTrack.id} (kind: ${trackKind}, language: ${language})`);
-        // Step 2: Download caption file
-        console.log('Downloading caption file...');
-        const captionDownloadResponse = await youtube.captions.download({
-            id: selectedTrack.id,
-            tfmt: 'srt', // Download as SRT format
-        });
-        const captionText = captionDownloadResponse.data;
-        if (!captionText || captionText.trim().length === 0) {
-            throw new Error('Downloaded caption file is empty');
-        }
-        console.log(`Caption file downloaded: ${captionText.length} bytes`);
-        // Step 3: Parse SRT format
-        const subtitles = parseSRT(captionText);
+        const [subtitleBuffer] = await file.download();
+        const subtitleText = subtitleBuffer.toString('utf-8');
+        console.log(`Downloaded subtitle file: ${subtitleText.length} characters`);
+        // Delete subtitle file immediately (cleanup)
+        await file.delete();
+        console.log(`✅ Deleted subtitle file from storage: ${result.storagePath}`);
+        // Parse SRT format
+        const subtitles = parseSRT(subtitleText);
         if (subtitles.length === 0) {
-            throw new Error('Failed to parse SRT caption file');
+            throw new Error('Failed to parse subtitle file');
         }
-        console.log(`✅ Parsed ${subtitles.length} subtitle segments from YouTube captions (${trackKind})`);
+        console.log(`✅ Parsed ${subtitles.length} subtitle segments from yt-dlp`);
         return subtitles;
     }
     catch (error) {
-        // Handle specific error cases
-        if (error.message === 'NO_CAPTIONS_AVAILABLE') {
-            throw new Error('This video does not have captions. AI Subs currently only supports videos with captions (uploaded or auto-generated).');
-        }
-        console.error('Error fetching YouTube captions:', error);
-        throw new Error(`Failed to fetch captions: ${error.message}`);
+        console.error('Error fetching YouTube subtitles via yt-dlp:', error);
+        throw new Error(`Failed to fetch subtitles: ${error.message}`);
     }
 }
 /**
@@ -354,9 +344,9 @@ exports.translateVideoSubtitles = functions.https.onRequest((request, response) 
                     return;
                 }
             }
-            // Fetch YouTube captions using YouTube Data API v3 (official method)
-            console.log('Fetching YouTube captions via YouTube Data API v3...');
-            const originalTranscript = await fetchYouTubeCaptions(videoId);
+            // Fetch YouTube subtitles using yt-dlp via Cloud Run (subtitle text only)
+            console.log('Fetching YouTube subtitles via yt-dlp (text only)...');
+            const originalTranscript = await fetchYouTubeSubtitles(videoId, userId);
             if (originalTranscript.length === 0) {
                 response.status(400).json({
                     success: false,
@@ -484,10 +474,10 @@ exports.translateVideoSubtitles = functions.https.onRequest((request, response) 
                     videoDuration: videoDurationSeconds,
                     thumbnailUrl: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
                     youtubeUrl,
-                    originalLanguage: 'auto', // From YouTube captions
-                    originalTranscript, // From YouTube captions
-                    hasOriginalTranscript: true, // From YouTube captions (not generated)
-                    transcriptSource: 'youtube_captions', // YouTube Data API v3
+                    originalLanguage: 'auto', // From YouTube subtitles
+                    originalTranscript, // From yt-dlp subtitles
+                    hasOriginalTranscript: true, // From subtitles (not generated)
+                    transcriptSource: 'yt-dlp_subtitles', // yt-dlp subtitle download
                     translations: {
                         [targetLanguage]: translationData,
                     },
