@@ -62,7 +62,8 @@ app.post('/download', async (req, res) => {
     // --audio-quality 9: Lowest quality (smallest file)
     // -o: Output template
     // --no-playlist: Don't download playlist
-    const ytdlCommand = `yt-dlp -x --audio-format mp3 --audio-quality 9 -o "${outputPath}" --no-playlist "${videoUrl}"`;
+    // --extractor-args: Use android client to bypass bot detection
+    const ytdlCommand = `yt-dlp -x --audio-format mp3 --audio-quality 9 -o "${outputPath}" --no-playlist --extractor-args "youtube:player_client=android" "${videoUrl}"`;
 
     console.log('Executing yt-dlp command...');
     const { stdout, stderr } = await execPromise(ytdlCommand, {
