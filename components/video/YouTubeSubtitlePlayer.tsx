@@ -1,6 +1,6 @@
 // components/video/YouTubeSubtitlePlayer.tsx
 // YouTube player with custom subtitle overlay using direct iframe embed
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { View, StyleSheet, Dimensions, Text, Platform, TouchableOpacity, Linking } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { SubtitleCue } from '../../types/subtitle';
@@ -73,19 +73,20 @@ export default function YouTubeSubtitlePlayer({
     }
   };
 
-  // Convert subtitles to timeline
-  const timeline = subtitles.map(sub => ({
-    start: srtTimeToSeconds(sub.startTime),
-    end: srtTimeToSeconds(sub.endTime),
-    text: sub.text
-  }));
+  // Memoize HTML content to prevent WebView reload on orientation change
+  const htmlContent = useMemo(() => {
+    // Convert subtitles to timeline
+    const timeline = subtitles.map(sub => ({
+      start: srtTimeToSeconds(sub.startTime),
+      end: srtTimeToSeconds(sub.endTime),
+      text: sub.text
+    }));
 
-  // Build YouTube embed URL with minimal parameters (avoid error 153)
-  // Remove enablejsapi and origin - these can trigger API restrictions
-  const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&controls=1&modestbranding=1&rel=0&cc_load_policy=0&iv_load_policy=3`;
+    // Build YouTube embed URL with minimal parameters (avoid error 153)
+    const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&controls=1&modestbranding=1&rel=0&cc_load_policy=0&iv_load_policy=3`;
 
-  // HTML with direct iframe embed and custom subtitle overlay
-  const htmlContent = `
+    // HTML with direct iframe embed and custom subtitle overlay
+    return `
 <!DOCTYPE html>
 <html>
 <head>
@@ -122,31 +123,45 @@ export default function YouTubeSubtitlePlayer({
       border: 0;
     }
 
-    /* Subtitle overlay */
+    /* Subtitle overlay - use CSS media queries to avoid WebView reload */
     #subtitle-overlay {
       position: fixed;
-      bottom: ${isLandscape ? '70px' : '90px'};
+      bottom: 40px; /* Portrait default */
       left: 0;
       right: 0;
       text-align: center;
       pointer-events: none;
       z-index: 9999;
-      padding: 0 ${isLandscape ? '60px' : '20px'};
+      padding: 0 16px;
     }
 
     #subtitle-text {
       display: inline-block;
-      background: rgba(0, 0, 0, 0.85);
+      background: rgba(0, 0, 0, 0.8);
       color: #fff;
-      font-size: ${isLandscape ? '22px' : '20px'};
+      font-size: 14px; /* Smaller, less intrusive */
       font-weight: 500;
-      line-height: 1.5;
-      padding: ${isLandscape ? '12px 24px' : '10px 20px'};
-      border-radius: 6px;
-      max-width: ${isLandscape ? '85%' : '90%'};
+      line-height: 1.4;
+      padding: 6px 12px;
+      border-radius: 4px;
+      max-width: 85%;
       word-wrap: break-word;
-      text-shadow: 2px 2px 6px rgba(0, 0, 0, 0.9);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+      text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.9);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Landscape mode - responsive via CSS media query */
+    @media (orientation: landscape) {
+      #subtitle-overlay {
+        bottom: 50px;
+        padding: 0 40px;
+      }
+
+      #subtitle-text {
+        font-size: 16px;
+        padding: 8px 16px;
+        max-width: 80%;
+      }
     }
 
     .hidden {
@@ -240,7 +255,8 @@ export default function YouTubeSubtitlePlayer({
   </script>
 </body>
 </html>
-  `;
+    `;
+  }, [videoId, subtitles]); // Only recreate if video or subtitles change
 
   // Handle messages from WebView
   const handleMessage = (event: any) => {
