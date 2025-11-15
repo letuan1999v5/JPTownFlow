@@ -1,5 +1,5 @@
 // components/video/YouTubeSubtitlePlayer.tsx
-// YouTube player with custom subtitle overlay using WebView
+// YouTube player with custom subtitle overlay using direct iframe embed
 import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, Dimensions, Text, Platform, TouchableOpacity, Linking } from 'react-native';
 import { WebView } from 'react-native-webview';
@@ -20,9 +20,7 @@ export default function YouTubeSubtitlePlayer({
 }: YouTubeSubtitlePlayerProps) {
   const webViewRef = useRef<WebView>(null);
   const [dimensions, setDimensions] = useState(Dimensions.get('window'));
-  const [playerReady, setPlayerReady] = useState(false);
-  const [hasError, setHasError] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [currentSubtitle, setCurrentSubtitle] = useState<string>('');
 
   // Listen to orientation/dimension changes
   useEffect(() => {
@@ -62,12 +60,36 @@ export default function YouTubeSubtitlePlayer({
     );
   }
 
-  // HTML template with YouTube iframe and custom subtitle overlay
+  // Convert SRT time to seconds
+  const srtTimeToSeconds = (srtTime: string): number => {
+    try {
+      const parts = srtTime.replace(',', '.').split(':');
+      const hours = parseInt(parts[0]) || 0;
+      const minutes = parseInt(parts[1]) || 0;
+      const seconds = parseFloat(parts[2]) || 0;
+      return hours * 3600 + minutes * 60 + seconds;
+    } catch (e) {
+      return 0;
+    }
+  };
+
+  // Convert subtitles to timeline
+  const timeline = subtitles.map(sub => ({
+    start: srtTimeToSeconds(sub.startTime),
+    end: srtTimeToSeconds(sub.endTime),
+    text: sub.text
+  }));
+
+  // Build YouTube embed URL with parameters
+  const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=1&modestbranding=1&rel=0&fs=1&playsinline=1&cc_load_policy=0&iv_load_policy=3&enablejsapi=1&origin=https://jptownflow.app`;
+
+  // HTML with direct iframe embed and custom subtitle overlay
   const htmlContent = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval'; script-src * 'unsafe-inline' 'unsafe-eval'; connect-src *; img-src * data: blob:; frame-src *; style-src * 'unsafe-inline';">
   <style>
     * {
       margin: 0;
@@ -83,25 +105,26 @@ export default function YouTubeSubtitlePlayer({
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
     }
 
-    #player-container {
+    #container {
       position: relative;
       width: 100%;
       height: 100%;
       background: #000;
     }
 
-    #player {
+    #youtube-iframe {
       position: absolute;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
+      border: 0;
     }
 
-    /* Subtitle overlay - positioned at bottom with responsive sizing */
+    /* Subtitle overlay */
     #subtitle-overlay {
       position: fixed;
-      bottom: ${isLandscape ? '60px' : '80px'};
+      bottom: ${isLandscape ? '70px' : '90px'};
       left: 0;
       right: 0;
       text-align: center;
@@ -114,181 +137,65 @@ export default function YouTubeSubtitlePlayer({
       display: inline-block;
       background: rgba(0, 0, 0, 0.85);
       color: #fff;
-      font-size: ${isLandscape ? '20px' : '18px'};
+      font-size: ${isLandscape ? '22px' : '20px'};
       font-weight: 500;
       line-height: 1.5;
-      padding: ${isLandscape ? '10px 20px' : '8px 16px'};
+      padding: ${isLandscape ? '12px 24px' : '10px 20px'};
       border-radius: 6px;
       max-width: ${isLandscape ? '85%' : '90%'};
       word-wrap: break-word;
       text-shadow: 2px 2px 6px rgba(0, 0, 0, 0.9);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
     }
 
     .hidden {
       display: none !important;
     }
-
-    /* Ensure fullscreen works properly */
-    #player iframe {
-      border: 0;
-      width: 100%;
-      height: 100%;
-    }
   </style>
 </head>
 <body>
-  <div id="player-container">
-    <div id="player"></div>
+  <div id="container">
+    <iframe
+      id="youtube-iframe"
+      src="${embedUrl}"
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+      allowfullscreen
+      referrerpolicy="strict-origin-when-cross-origin"
+    ></iframe>
   </div>
 
-  <!-- Subtitle overlay outside player container to ensure it stays on top -->
   <div id="subtitle-overlay">
     <div id="subtitle-text" class="hidden"></div>
   </div>
 
   <script>
-    // Subtitles data
-    const subtitles = ${JSON.stringify(subtitles)};
-
-    // Convert SRT time to seconds
-    function srtTimeToSeconds(srtTime) {
-      try {
-        const parts = srtTime.replace(',', '.').split(':');
-        const hours = parseInt(parts[0]) || 0;
-        const minutes = parseInt(parts[1]) || 0;
-        const seconds = parseFloat(parts[2]) || 0;
-        return hours * 3600 + minutes * 60 + seconds;
-      } catch (e) {
-        console.error('Error parsing SRT time:', srtTime, e);
-        return 0;
-      }
-    }
-
-    // Convert subtitles to timeline
-    const timeline = subtitles.map(sub => ({
-      start: srtTimeToSeconds(sub.startTime),
-      end: srtTimeToSeconds(sub.endTime),
-      text: sub.text
-    }));
-
-    // Current subtitle index
+    const timeline = ${JSON.stringify(timeline)};
     let currentSubIndex = -1;
+    let startTime = null;
 
-    // YouTube Player API
-    let player;
-    let updateInterval;
-
-    // Load YouTube iframe API
-    const tag = document.createElement('script');
-    tag.src = 'https://www.youtube.com/iframe_api';
-    const firstScriptTag = document.getElementsByTagName('script')[0];
-    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-
-    // Initialize player when API is ready
-    function onYouTubeIframeAPIReady() {
-      try {
-        player = new YT.Player('player', {
-          host: 'https://www.youtube-nocookie.com',
-          videoId: '${videoId}',
-          width: '100%',
-          height: '100%',
-          playerVars: {
-            autoplay: 1,
-            controls: 1,
-            modestbranding: 1,
-            rel: 0,
-            showinfo: 0,
-            fs: 1, // Enable fullscreen button
-            playsinline: 1,
-            cc_load_policy: 0, // Disable YouTube's default captions
-            iv_load_policy: 3, // Disable annotations
-            origin: window.location.origin || 'https://jp-town-flow-app.web.app',
-            enablejsapi: 1
-          },
-          events: {
-            onReady: onPlayerReady,
-            onStateChange: onPlayerStateChange,
-            onError: onPlayerError
-          }
-        });
-      } catch (error) {
-        console.error('Error creating YouTube player:', error);
-        window.ReactNativeWebView?.postMessage(JSON.stringify({
-          type: 'error',
-          error: 'Failed to create player: ' + error.message
-        }));
-      }
-    }
-
-    function onPlayerReady(event) {
-      console.log('YouTube player ready');
-      window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'ready' }));
-      startSubtitleSync();
-    }
-
-    function onPlayerStateChange(event) {
-      // YT.PlayerState.ENDED = 0
-      if (event.data === 0) {
-        window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'ended' }));
-      }
-
-      // Start/stop subtitle sync based on play state
-      // YT.PlayerState.PLAYING = 1
-      if (event.data === 1) {
-        startSubtitleSync();
-      } else {
-        stopSubtitleSync();
-      }
-    }
-
-    function onPlayerError(event) {
-      console.error('YouTube player error:', event.data);
-      const errorMessages = {
-        2: 'Invalid video ID',
-        5: 'HTML5 player error',
-        100: 'Video not found or private',
-        101: 'Video not allowed to be played in embedded players',
-        150: 'Video not allowed to be played in embedded players',
-        153: 'Video playback is restricted - this video may not support embedded playback'
-      };
-
-      const errorMsg = errorMessages[event.data] || 'Unknown error: ' + event.data;
-
-      window.ReactNativeWebView?.postMessage(JSON.stringify({
-        type: 'error',
-        error: errorMsg
-      }));
-    }
-
-    // Subtitle synchronization
+    // Start subtitle sync
     function startSubtitleSync() {
-      if (updateInterval) return;
-
-      updateInterval = setInterval(() => {
-        try {
-          if (!player || typeof player.getCurrentTime !== 'function') {
-            return;
-          }
-
-          const currentTime = player.getCurrentTime();
-          updateSubtitle(currentTime);
-        } catch (error) {
-          console.error('Error in subtitle sync:', error);
-        }
-      }, 100); // Update every 100ms for smooth subtitle transitions
-    }
-
-    function stopSubtitleSync() {
-      if (updateInterval) {
-        clearInterval(updateInterval);
-        updateInterval = null;
+      if (!startTime) {
+        startTime = Date.now();
       }
+
+      requestAnimationFrame(updateSubtitle);
     }
 
-    function updateSubtitle(currentTime) {
+    function updateSubtitle() {
+      if (!startTime) {
+        requestAnimationFrame(updateSubtitle);
+        return;
+      }
+
+      // Calculate current time (rough estimation based on elapsed time)
+      const currentTime = (Date.now() - startTime) / 1000;
+
       const subtitleElement = document.getElementById('subtitle-text');
-      if (!subtitleElement) return;
+      if (!subtitleElement) {
+        requestAnimationFrame(updateSubtitle);
+        return;
+      }
 
       // Find current subtitle
       let foundIndex = -1;
@@ -310,18 +217,25 @@ export default function YouTubeSubtitlePlayer({
           subtitleElement.classList.add('hidden');
         }
       }
+
+      requestAnimationFrame(updateSubtitle);
     }
 
-    // Cleanup on unload
-    window.addEventListener('beforeunload', () => {
-      stopSubtitleSync();
-      if (player && typeof player.destroy === 'function') {
-        player.destroy();
-      }
+    // Start when page loads
+    window.addEventListener('load', () => {
+      console.log('Page loaded, starting subtitle sync');
+      setTimeout(startSubtitleSync, 1000); // Start after 1 second delay
+      window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'ready' }));
     });
 
-    // Log ready state
-    console.log('YouTube player script loaded, waiting for API...');
+    // Handle errors
+    window.addEventListener('error', (e) => {
+      console.error('Error:', e);
+      window.ReactNativeWebView?.postMessage(JSON.stringify({
+        type: 'error',
+        error: 'Player error: ' + e.message
+      }));
+    });
   </script>
 </body>
 </html>
@@ -334,18 +248,10 @@ export default function YouTubeSubtitlePlayer({
 
       switch (data.type) {
         case 'ready':
-          console.log('YouTube player ready');
-          setPlayerReady(true);
-          setHasError(false);
-          break;
-        case 'ended':
-          console.log('Video ended');
-          onEnd?.();
+          console.log('Player ready');
           break;
         case 'error':
           console.error('Player error:', data.error);
-          setHasError(true);
-          setErrorMessage(data.error);
           onError?.(new Error(data.error));
           break;
       }
@@ -368,45 +274,37 @@ export default function YouTubeSubtitlePlayer({
 
   return (
     <View style={[styles.container, { height: containerHeight }]}>
-      {hasError ? (
-        /* Fallback UI when player has error */
-        <View style={styles.errorFallback}>
-          <Text style={styles.errorTitle}>⚠️ Playback Restricted</Text>
-          <Text style={styles.errorDescription}>{errorMessage}</Text>
-          <Text style={styles.errorHint}>
-            This video may not support embedded playback. Watch it on YouTube instead with your translated subtitles below.
-          </Text>
-          <TouchableOpacity style={styles.youtubeButton} onPress={handleOpenInYouTube}>
-            <Text style={styles.youtubeButtonText}>▶ Open in YouTube</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <WebView
-          ref={webViewRef}
-          source={{ html: htmlContent }}
-          style={styles.webview}
-          allowsInlineMediaPlayback={true}
-          allowsFullscreenVideo={true}
-          mediaPlaybackRequiresUserAction={false}
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-          onMessage={handleMessage}
-          onError={(syntheticEvent) => {
-            const { nativeEvent } = syntheticEvent;
-            console.error('WebView error:', nativeEvent);
-            setHasError(true);
-            setErrorMessage('WebView failed to load');
-            onError?.(new Error('WebView failed to load'));
-          }}
-          scrollEnabled={false}
-          bounces={false}
-          showsHorizontalScrollIndicator={false}
-          showsVerticalScrollIndicator={false}
-          // Android specific settings
-          mixedContentMode="always"
-          androidLayerType="hardware"
-        />
-      )}
+      <WebView
+        ref={webViewRef}
+        source={{ html: htmlContent }}
+        style={styles.webview}
+        allowsInlineMediaPlayback={true}
+        allowsFullscreenVideo={true}
+        mediaPlaybackRequiresUserAction={false}
+        javaScriptEnabled={true}
+        domStorageEnabled={true}
+        onMessage={handleMessage}
+        onError={(syntheticEvent) => {
+          const { nativeEvent } = syntheticEvent;
+          console.error('WebView error:', nativeEvent);
+        }}
+        scrollEnabled={false}
+        bounces={false}
+        showsHorizontalScrollIndicator={false}
+        showsVerticalScrollIndicator={false}
+        mixedContentMode="always"
+        androidLayerType="hardware"
+        originWhitelist={['*']}
+        allowUniversalAccessFromFileURLs={true}
+        allowFileAccess={true}
+      />
+
+      {/* Fallback button overlay */}
+      <View style={styles.fallbackOverlay}>
+        <TouchableOpacity style={styles.openYoutubeBtn} onPress={handleOpenInYouTube}>
+          <Text style={styles.openYoutubeBtnText}>If video doesn't play, tap to open in YouTube ▶</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -432,47 +330,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
   },
-  errorFallback: {
-    flex: 1,
-    backgroundColor: '#1F2937',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-    borderRadius: 12,
-    margin: 16,
+  fallbackOverlay: {
+    position: 'absolute',
+    bottom: 10,
+    left: 10,
+    right: 10,
+    zIndex: 1,
   },
-  errorTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#FBBF24',
-    marginBottom: 12,
-    textAlign: 'center',
+  openYoutubeBtn: {
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+    alignSelf: 'center',
   },
-  errorDescription: {
-    fontSize: 14,
-    color: '#F87171',
-    marginBottom: 16,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  errorHint: {
-    fontSize: 13,
-    color: '#9CA3AF',
-    marginBottom: 24,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  youtubeButton: {
-    backgroundColor: '#EF4444',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  youtubeButtonText: {
+  openYoutubeBtnText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '500',
   },
 });
