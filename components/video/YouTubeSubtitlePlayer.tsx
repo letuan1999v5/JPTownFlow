@@ -82,10 +82,7 @@ export default function YouTubeSubtitlePlayer({
       text: sub.text
     }));
 
-    // Build YouTube embed URL with minimal parameters (avoid error 153)
-    const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&controls=1&modestbranding=1&rel=0&cc_load_policy=0&iv_load_policy=3`;
-
-    // HTML with direct iframe embed and custom subtitle overlay
+    // HTML with YouTube iframe API and custom subtitle overlay
     return `
 <!DOCTYPE html>
 <html>
@@ -114,10 +111,15 @@ export default function YouTubeSubtitlePlayer({
       background: #000;
     }
 
-    #youtube-iframe {
+    #youtube-player {
       position: absolute;
       top: 0;
       left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    #youtube-player iframe {
       width: 100%;
       height: 100%;
       border: 0;
@@ -181,13 +183,8 @@ export default function YouTubeSubtitlePlayer({
 </head>
 <body>
   <div id="container">
-    <iframe
-      id="youtube-iframe"
-      src="${embedUrl}"
-      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-      allowfullscreen
-      referrerpolicy="strict-origin-when-cross-origin"
-    ></iframe>
+    <!-- YouTube player will be inserted here -->
+    <div id="youtube-player"></div>
 
     <!-- Subtitle overlay inside container for fullscreen support -->
     <div id="subtitle-overlay">
@@ -198,33 +195,107 @@ export default function YouTubeSubtitlePlayer({
   <script>
     const timeline = ${JSON.stringify(timeline)};
     let currentSubIndex = -1;
-    let startTime = null;
+    let player = null;
+    let updateInterval = null;
 
-    // Start subtitle sync
-    function startSubtitleSync() {
-      if (!startTime) {
-        startTime = Date.now();
-      }
+    // Load YouTube iframe API
+    const tag = document.createElement('script');
+    tag.src = 'https://www.youtube.com/iframe_api';
+    const firstScriptTag = document.getElementsByTagName('script')[0];
+    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
 
-      requestAnimationFrame(updateSubtitle);
+    // Initialize player when API is ready
+    window.onYouTubeIframeAPIReady = function() {
+      player = new YT.Player('youtube-player', {
+        videoId: '${videoId}',
+        width: '100%',
+        height: '100%',
+        playerVars: {
+          autoplay: 1,
+          controls: 1,
+          modestbranding: 1,
+          rel: 0,
+          cc_load_policy: 0,
+          iv_load_policy: 3,
+          playsinline: 1
+        },
+        events: {
+          'onReady': onPlayerReady,
+          'onStateChange': onPlayerStateChange,
+          'onError': onPlayerError
+        }
+      });
+    };
+
+    function onPlayerReady(event) {
+      console.log('YouTube player ready');
+      window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'ready' }));
+      startSubtitleSync();
     }
 
-    function updateSubtitle() {
-      if (!startTime) {
-        requestAnimationFrame(updateSubtitle);
-        return;
+    function onPlayerStateChange(event) {
+      // YT.PlayerState: UNSTARTED=-1, ENDED=0, PLAYING=1, PAUSED=2, BUFFERING=3, CUED=5
+      if (event.data === YT.PlayerState.PLAYING) {
+        console.log('Video playing - start subtitle sync');
+        startSubtitleSync();
+      } else if (event.data === YT.PlayerState.PAUSED || event.data === YT.PlayerState.BUFFERING) {
+        console.log('Video paused/buffering - stop subtitle sync');
+        stopSubtitleSync();
+      } else if (event.data === YT.PlayerState.ENDED) {
+        console.log('Video ended');
+        stopSubtitleSync();
+        window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'ended' }));
       }
+    }
 
-      // Calculate current time (rough estimation based on elapsed time)
-      const currentTime = (Date.now() - startTime) / 1000;
+    function onPlayerError(event) {
+      console.error('YouTube player error:', event.data);
+      const errorMessages = {
+        2: 'Invalid video ID',
+        5: 'HTML5 player error',
+        100: 'Video not found or private',
+        101: 'Embedding disabled by owner',
+        150: 'Embedding disabled by owner',
+        153: 'Embedding disabled by owner'
+      };
+      const errorMsg = errorMessages[event.data] || 'Unknown error: ' + event.data;
+      window.ReactNativeWebView?.postMessage(JSON.stringify({
+        type: 'error',
+        error: errorMsg
+      }));
+    }
 
+    // Start subtitle sync using actual video time
+    function startSubtitleSync() {
+      if (updateInterval) return; // Already running
+
+      updateInterval = setInterval(() => {
+        if (!player || typeof player.getCurrentTime !== 'function') {
+          return;
+        }
+
+        try {
+          // Get actual video playback time (handles ads, pause, buffering automatically)
+          const currentTime = player.getCurrentTime();
+          updateSubtitle(currentTime);
+        } catch (error) {
+          console.error('Error getting current time:', error);
+        }
+      }, 100); // Update every 100ms for smooth subtitle transitions
+    }
+
+    function stopSubtitleSync() {
+      if (updateInterval) {
+        clearInterval(updateInterval);
+        updateInterval = null;
+      }
+    }
+
+    function updateSubtitle(currentTime) {
       const subtitleElement = document.getElementById('subtitle-text');
-      if (!subtitleElement) {
-        requestAnimationFrame(updateSubtitle);
-        return;
-      }
+      if (!subtitleElement) return;
 
-      // Find current subtitle
+      // Find current subtitle based on actual video time
       let foundIndex = -1;
       for (let i = 0; i < timeline.length; i++) {
         if (currentTime >= timeline[i].start && currentTime <= timeline[i].end) {
@@ -244,15 +315,14 @@ export default function YouTubeSubtitlePlayer({
           subtitleElement.classList.add('hidden');
         }
       }
-
-      requestAnimationFrame(updateSubtitle);
     }
 
-    // Start when page loads
-    window.addEventListener('load', () => {
-      console.log('Page loaded, starting subtitle sync');
-      setTimeout(startSubtitleSync, 1000); // Start after 1 second delay
-      window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'ready' }));
+    // Cleanup on unload
+    window.addEventListener('beforeunload', () => {
+      stopSubtitleSync();
+      if (player && typeof player.destroy === 'function') {
+        player.destroy();
+      }
     });
 
     // Handle errors
