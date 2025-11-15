@@ -125,9 +125,9 @@ export default function YouTubeSubtitlePlayer({
       border: 0;
     }
 
-    /* Subtitle overlay - use CSS media queries to avoid WebView reload */
+    /* Subtitle overlay - use absolute positioning to stay within container */
     #subtitle-overlay {
-      position: fixed;
+      position: absolute;
       bottom: 40px; /* Portrait default */
       left: 0;
       right: 0;
@@ -170,14 +170,24 @@ export default function YouTubeSubtitlePlayer({
       display: none !important;
     }
 
-    /* Fullscreen support - ensure subtitle stays visible in fullscreen */
+    /* Fullscreen support - when iframe goes fullscreen */
+    #youtube-player:fullscreen ~ #subtitle-overlay,
+    #youtube-player:-webkit-full-screen ~ #subtitle-overlay,
+    #youtube-player:-moz-full-screen ~ #subtitle-overlay,
+    #youtube-player:-ms-fullscreen ~ #subtitle-overlay {
+      position: fixed !important;
+      z-index: 2147483647 !important;
+      bottom: 80px !important;
+    }
+
+    /* Also handle when container goes fullscreen */
     #container:fullscreen #subtitle-overlay,
     #container:-webkit-full-screen #subtitle-overlay,
     #container:-moz-full-screen #subtitle-overlay,
     #container:-ms-fullscreen #subtitle-overlay {
-      display: block;
-      position: fixed;
-      z-index: 2147483647; /* Maximum z-index for fullscreen */
+      position: fixed !important;
+      z-index: 2147483647 !important;
+      bottom: 80px !important;
     }
   </style>
 </head>
@@ -317,12 +327,68 @@ export default function YouTubeSubtitlePlayer({
       }
     }
 
+    // Handle fullscreen for subtitle visibility
+    function handleFullscreenChange() {
+      const subtitleOverlay = document.getElementById('subtitle-overlay');
+      if (!subtitleOverlay) return;
+
+      const isFullscreen = !!(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.mozFullScreenElement ||
+        document.msFullscreenElement
+      );
+
+      if (isFullscreen) {
+        console.log('Entered fullscreen - adjusting subtitle overlay');
+        // Move subtitle to fullscreen element
+        const fullscreenElement =
+          document.fullscreenElement ||
+          document.webkitFullscreenElement ||
+          document.mozFullScreenElement ||
+          document.msFullscreenElement;
+
+        if (fullscreenElement && fullscreenElement !== subtitleOverlay.parentElement) {
+          fullscreenElement.appendChild(subtitleOverlay);
+        }
+
+        // Force fixed positioning in fullscreen
+        subtitleOverlay.style.position = 'fixed';
+        subtitleOverlay.style.bottom = '80px';
+        subtitleOverlay.style.zIndex = '2147483647';
+      } else {
+        console.log('Exited fullscreen - restoring subtitle overlay');
+        // Move subtitle back to container
+        const container = document.getElementById('container');
+        if (container && subtitleOverlay.parentElement !== container) {
+          container.appendChild(subtitleOverlay);
+        }
+
+        // Restore normal positioning
+        subtitleOverlay.style.position = 'absolute';
+        subtitleOverlay.style.bottom = '40px';
+        subtitleOverlay.style.zIndex = '9999';
+      }
+    }
+
+    // Listen for fullscreen changes
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+
     // Cleanup on unload
     window.addEventListener('beforeunload', () => {
       stopSubtitleSync();
       if (player && typeof player.destroy === 'function') {
         player.destroy();
       }
+
+      // Remove fullscreen listeners
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
     });
 
     // Handle errors
