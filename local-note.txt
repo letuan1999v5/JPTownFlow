@@ -1,1 +1,3 @@
 start: npx expo start --dev-client --clear --localhost
+Service [ytdl-service] revision [ytdl-service-00001-cgd] has been deployed and is serving 100 percent of traffic.
+Service URL: https://ytdl-service-140200291955.us-central1.run.app
