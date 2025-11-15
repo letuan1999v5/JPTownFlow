@@ -41,7 +41,7 @@ const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const generative_ai_1 = require("@google/generative-ai");
 const cors_1 = __importDefault(require("cors"));
-const youtube_transcript_1 = require("youtube-transcript");
+const youtubei_js_1 = require("youtubei.js");
 // Initialize CORS
 const corsHandler = (0, cors_1.default)({ origin: true });
 // Gemini API initialization
@@ -129,41 +129,56 @@ function millisecondsToSRT(ms) {
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')},${String(milliseconds).padStart(3, '0')}`;
 }
 /**
- * Fetch YouTube subtitles using youtube-transcript library
- * This library directly accesses YouTube's timedtext API
+ * Fetch YouTube subtitles using youtubei.js library
+ * This library uses YouTube's InnerTube API (same as YouTube web app)
  */
 async function fetchYouTubeSubtitles(videoId) {
-    var _a, _b;
-    console.log(`Fetching subtitles for YouTube video: ${videoId} via youtube-transcript`);
+    var _a, _b, _c, _d, _e;
+    console.log(`Fetching subtitles for YouTube video: ${videoId} via youtubei.js`);
     try {
-        // Fetch transcript using youtube-transcript
-        // This library uses YouTube's public timedtext API
-        const transcript = await youtube_transcript_1.YoutubeTranscript.fetchTranscript(videoId);
-        if (!transcript || transcript.length === 0) {
-            throw new Error('No subtitles found for this video');
+        // Initialize YouTube InnerTube client
+        const youtube = await youtubei_js_1.Innertube.create();
+        // Get video info
+        const videoInfo = await youtube.getInfo(videoId);
+        // Get transcript/captions
+        const transcriptData = await videoInfo.getTranscript();
+        if (!transcriptData || !transcriptData.transcript) {
+            throw new Error('NO_CAPTIONS_AVAILABLE');
         }
-        console.log(`✅ Fetched ${transcript.length} transcript segments from YouTube`);
-        // Convert youtube-transcript format to SubtitleCue format
-        // youtube-transcript returns: { text: string, duration: number, offset: number }
-        // We need: { index: number, startTime: string, endTime: string, text: string }
-        const subtitles = transcript.map((item, index) => {
-            const startTimeMs = Math.floor(item.offset);
-            const endTimeMs = Math.floor(item.offset + item.duration);
+        const transcript = transcriptData.transcript;
+        const segments = (_b = (_a = transcript.content) === null || _a === void 0 ? void 0 : _a.body) === null || _b === void 0 ? void 0 : _b.initial_segments;
+        if (!segments || segments.length === 0) {
+            throw new Error('NO_CAPTIONS_AVAILABLE');
+        }
+        console.log(`✅ Fetched ${segments.length} transcript segments from YouTube`);
+        // Convert youtubei.js format to SubtitleCue format
+        const subtitles = segments.map((segment, index) => {
+            var _a;
+            const startTimeMs = segment.start_ms || 0;
+            const endTimeMs = segment.end_ms || (startTimeMs + (segment.duration_ms || 0));
+            const text = ((_a = segment.snippet) === null || _a === void 0 ? void 0 : _a.text) || '';
             return {
                 index: index + 1,
                 startTime: millisecondsToSRT(startTimeMs),
                 endTime: millisecondsToSRT(endTimeMs),
-                text: item.text.trim(),
+                text: text.trim(),
             };
         });
-        console.log(`✅ Converted ${subtitles.length} subtitle segments`);
-        return subtitles;
+        // Filter out empty subtitles
+        const validSubtitles = subtitles.filter(s => s.text.length > 0);
+        if (validSubtitles.length === 0) {
+            throw new Error('NO_CAPTIONS_AVAILABLE');
+        }
+        console.log(`✅ Converted ${validSubtitles.length} subtitle segments`);
+        return validSubtitles;
     }
     catch (error) {
         console.error('Error fetching YouTube subtitles:', error);
         // Handle specific error cases
-        if (((_a = error.message) === null || _a === void 0 ? void 0 : _a.includes('Could not find captions')) ||
-            ((_b = error.message) === null || _b === void 0 ? void 0 : _b.includes('Transcript is disabled'))) {
+        if (error.message === 'NO_CAPTIONS_AVAILABLE' ||
+            ((_c = error.message) === null || _c === void 0 ? void 0 : _c.includes('Could not find captions')) ||
+            ((_d = error.message) === null || _d === void 0 ? void 0 : _d.includes('Transcript is disabled')) ||
+            ((_e = error.message) === null || _e === void 0 ? void 0 : _e.includes('transcripts are disabled'))) {
             throw new Error('This video does not have subtitles available. AI Subs requires videos with captions (auto-generated or manual).');
         }
         throw new Error(`Failed to fetch subtitles: ${error.message}`);
@@ -306,8 +321,8 @@ exports.translateVideoSubtitles = functions.https.onRequest((request, response) 
                     return;
                 }
             }
-            // Fetch YouTube subtitles using youtube-transcript library
-            console.log('Fetching YouTube subtitles via youtube-transcript...');
+            // Fetch YouTube subtitles using youtubei.js library
+            console.log('Fetching YouTube subtitles via youtubei.js...');
             const originalTranscript = await fetchYouTubeSubtitles(videoId);
             if (originalTranscript.length === 0) {
                 response.status(400).json({
@@ -437,9 +452,9 @@ exports.translateVideoSubtitles = functions.https.onRequest((request, response) 
                     thumbnailUrl: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
                     youtubeUrl,
                     originalLanguage: 'auto', // From YouTube subtitles
-                    originalTranscript, // From youtube-transcript library
+                    originalTranscript, // From youtubei.js library
                     hasOriginalTranscript: true, // From subtitles (not generated)
-                    transcriptSource: 'youtube-transcript', // youtube-transcript npm library
+                    transcriptSource: 'youtubei.js', // youtubei.js npm library (InnerTube API)
                     translations: {
                         [targetLanguage]: translationData,
                     },
