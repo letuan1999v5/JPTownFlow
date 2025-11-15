@@ -41,6 +41,7 @@ const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const generative_ai_1 = require("@google/generative-ai");
 const cors_1 = __importDefault(require("cors"));
+const youtube_transcript_1 = require("youtube-transcript");
 // Initialize CORS
 const corsHandler = (0, cors_1.default)({ origin: true });
 // Gemini API initialization
@@ -118,94 +119,55 @@ function extractYouTubeVideoId(url) {
     return null;
 }
 /**
- * Fetch YouTube subtitles using yt-dlp via Cloud Run service
- * Downloads ONLY subtitle text (no audio/video)
+ * Convert milliseconds to SRT time format (HH:MM:SS,mmm)
  */
-async function fetchYouTubeSubtitles(videoId, userId) {
-    var _a;
-    console.log(`Fetching subtitles for YouTube video: ${videoId} via yt-dlp`);
+function millisecondsToSRT(ms) {
+    const hours = Math.floor(ms / 3600000);
+    const minutes = Math.floor((ms % 3600000) / 60000);
+    const seconds = Math.floor((ms % 60000) / 1000);
+    const milliseconds = ms % 1000;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')},${String(milliseconds).padStart(3, '0')}`;
+}
+/**
+ * Fetch YouTube subtitles using youtube-transcript library
+ * This library directly accesses YouTube's timedtext API
+ */
+async function fetchYouTubeSubtitles(videoId) {
+    var _a, _b;
+    console.log(`Fetching subtitles for YouTube video: ${videoId} via youtube-transcript`);
     try {
-        // Get Cloud Run service URL
-        const cloudRunUrl = ((_a = functions.config().ytdl) === null || _a === void 0 ? void 0 : _a.serviceurl) || process.env.YTDL_SERVICE_URL;
-        if (!cloudRunUrl) {
-            throw new Error('Cloud Run service URL not configured. Set with: firebase functions:config:set ytdl.serviceurl="https://your-service-url"');
+        // Fetch transcript using youtube-transcript
+        // This library uses YouTube's public timedtext API
+        const transcript = await youtube_transcript_1.YoutubeTranscript.fetchTranscript(videoId);
+        if (!transcript || transcript.length === 0) {
+            throw new Error('No subtitles found for this video');
         }
-        console.log(`Calling Cloud Run service: ${cloudRunUrl}/download`);
-        // Call Cloud Run service to download subtitles
-        const response = await fetch(`${cloudRunUrl}/download`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                videoId,
-                userId,
-            }),
+        console.log(`✅ Fetched ${transcript.length} transcript segments from YouTube`);
+        // Convert youtube-transcript format to SubtitleCue format
+        // youtube-transcript returns: { text: string, duration: number, offset: number }
+        // We need: { index: number, startTime: string, endTime: string, text: string }
+        const subtitles = transcript.map((item, index) => {
+            const startTimeMs = Math.floor(item.offset);
+            const endTimeMs = Math.floor(item.offset + item.duration);
+            return {
+                index: index + 1,
+                startTime: millisecondsToSRT(startTimeMs),
+                endTime: millisecondsToSRT(endTimeMs),
+                text: item.text.trim(),
+            };
         });
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Cloud Run service error (${response.status}): ${errorText}`);
-        }
-        const result = await response.json();
-        if (!result.success) {
-            throw new Error(result.error || 'Cloud Run service returned failure');
-        }
-        console.log(`✅ Subtitles downloaded via Cloud Run: ${result.storagePath}`);
-        // Download subtitle file from Storage
-        const bucket = admin.storage().bucket();
-        const file = bucket.file(result.storagePath);
-        const [exists] = await file.exists();
-        if (!exists) {
-            throw new Error(`Subtitle file not found in storage: ${result.storagePath}`);
-        }
-        const [subtitleBuffer] = await file.download();
-        const subtitleText = subtitleBuffer.toString('utf-8');
-        console.log(`Downloaded subtitle file: ${subtitleText.length} characters`);
-        // Delete subtitle file immediately (cleanup)
-        await file.delete();
-        console.log(`✅ Deleted subtitle file from storage: ${result.storagePath}`);
-        // Parse SRT format
-        const subtitles = parseSRT(subtitleText);
-        if (subtitles.length === 0) {
-            throw new Error('Failed to parse subtitle file');
-        }
-        console.log(`✅ Parsed ${subtitles.length} subtitle segments from yt-dlp`);
+        console.log(`✅ Converted ${subtitles.length} subtitle segments`);
         return subtitles;
     }
     catch (error) {
-        console.error('Error fetching YouTube subtitles via yt-dlp:', error);
+        console.error('Error fetching YouTube subtitles:', error);
+        // Handle specific error cases
+        if (((_a = error.message) === null || _a === void 0 ? void 0 : _a.includes('Could not find captions')) ||
+            ((_b = error.message) === null || _b === void 0 ? void 0 : _b.includes('Transcript is disabled'))) {
+            throw new Error('This video does not have subtitles available. AI Subs requires videos with captions (auto-generated or manual).');
+        }
         throw new Error(`Failed to fetch subtitles: ${error.message}`);
     }
-}
-/**
- * Parse SRT subtitle format
- */
-function parseSRT(srtText) {
-    const subtitles = [];
-    const blocks = srtText.trim().split(/\n\s*\n/);
-    for (const block of blocks) {
-        const lines = block.split('\n');
-        if (lines.length < 3)
-            continue;
-        const index = parseInt(lines[0]);
-        const timeLine = lines[1];
-        const text = lines.slice(2).join('\n').trim();
-        // Parse timing (format: 00:00:00,000 --> 00:00:05,000)
-        const timeMatch = timeLine.match(/(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})/);
-        if (!timeMatch)
-            continue;
-        const startTime = timeMatch[1];
-        const endTime = timeMatch[2];
-        if (!isNaN(index) && startTime && endTime && text) {
-            subtitles.push({
-                index,
-                startTime,
-                endTime,
-                text,
-            });
-        }
-    }
-    return subtitles;
 }
 /**
  * Translate subtitles using Gemini
@@ -344,9 +306,9 @@ exports.translateVideoSubtitles = functions.https.onRequest((request, response) 
                     return;
                 }
             }
-            // Fetch YouTube subtitles using yt-dlp via Cloud Run (subtitle text only)
-            console.log('Fetching YouTube subtitles via yt-dlp (text only)...');
-            const originalTranscript = await fetchYouTubeSubtitles(videoId, userId);
+            // Fetch YouTube subtitles using youtube-transcript library
+            console.log('Fetching YouTube subtitles via youtube-transcript...');
+            const originalTranscript = await fetchYouTubeSubtitles(videoId);
             if (originalTranscript.length === 0) {
                 response.status(400).json({
                     success: false,
@@ -475,9 +437,9 @@ exports.translateVideoSubtitles = functions.https.onRequest((request, response) 
                     thumbnailUrl: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
                     youtubeUrl,
                     originalLanguage: 'auto', // From YouTube subtitles
-                    originalTranscript, // From yt-dlp subtitles
+                    originalTranscript, // From youtube-transcript library
                     hasOriginalTranscript: true, // From subtitles (not generated)
-                    transcriptSource: 'yt-dlp_subtitles', // yt-dlp subtitle download
+                    transcriptSource: 'youtube-transcript', // youtube-transcript npm library
                     translations: {
                         [targetLanguage]: translationData,
                     },
