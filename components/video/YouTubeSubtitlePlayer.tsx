@@ -345,7 +345,7 @@ export default function YouTubeSubtitlePlayer({
       );
 
       if (isFullscreen) {
-        console.log('Entered fullscreen - adjusting subtitle overlay');
+        console.log('🔴 FULLSCREEN DETECTED - Adjusting subtitle overlay');
         // Move subtitle to fullscreen element
         const fullscreenElement =
           document.fullscreenElement ||
@@ -353,35 +353,74 @@ export default function YouTubeSubtitlePlayer({
           document.mozFullScreenElement ||
           document.msFullscreenElement;
 
+        console.log('🔴 Fullscreen element:', fullscreenElement?.tagName, fullscreenElement?.id);
+        console.log('🔴 Subtitle overlay parent before:', subtitleOverlay.parentElement?.tagName);
+
         if (fullscreenElement && fullscreenElement !== subtitleOverlay.parentElement) {
           fullscreenElement.appendChild(subtitleOverlay);
+          console.log('🔴 Moved subtitle to fullscreen element');
         }
 
-        // Force fixed positioning in fullscreen with very low bottom (near video bottom)
-        // Use cssText with !important to override everything
+        console.log('🔴 Subtitle overlay parent after:', subtitleOverlay.parentElement?.tagName);
+
+        // Get subtitle text element
+        const subtitleText = document.getElementById('subtitle-text');
+
+        // Force EVERYTHING with !important - use BRIGHT RED for debugging
         subtitleOverlay.style.cssText = \`
+          display: block !important;
+          visibility: visible !important;
+          opacity: 1 !important;
           position: fixed !important;
-          bottom: 20px !important;
-          left: 0 !important;
-          right: 0 !important;
+          top: 50% !important;
+          left: 50% !important;
+          transform: translate(-50%, -50%) translateZ(9999px) !important;
           z-index: 2147483647 !important;
           pointer-events: none !important;
-          transform: translateZ(9999px) !important;
           isolation: isolate !important;
           will-change: transform !important;
-          text-align: center !important;
-          padding: 0 16px !important;
+          width: 90% !important;
+          max-width: 800px !important;
         \`;
+
+        // Style subtitle text with BRIGHT RED background for visibility
+        if (subtitleText) {
+          subtitleText.style.cssText = \`
+            display: inline-block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            background: rgba(255, 0, 0, 0.9) !important;
+            color: #fff !important;
+            font-size: 32px !important;
+            font-weight: 700 !important;
+            padding: 20px 30px !important;
+            border-radius: 8px !important;
+            text-shadow: 3px 3px 6px rgba(0, 0, 0, 1) !important;
+            box-shadow: 0 5px 20px rgba(255, 0, 0, 0.9) !important;
+            border: 3px solid yellow !important;
+          \`;
+          console.log('🔴 Applied BRIGHT RED style to subtitle text');
+        }
+
+        console.log('🔴 Subtitle overlay computed display:', window.getComputedStyle(subtitleOverlay).display);
+        console.log('🔴 Subtitle overlay computed visibility:', window.getComputedStyle(subtitleOverlay).visibility);
+        console.log('🔴 Subtitle overlay computed z-index:', window.getComputedStyle(subtitleOverlay).zIndex);
       } else {
-        console.log('Exited fullscreen - restoring subtitle overlay');
+        console.log('🟢 Exited fullscreen - restoring subtitle overlay');
         // Move subtitle back to container
         const container = document.getElementById('container');
         if (container && subtitleOverlay.parentElement !== container) {
           container.appendChild(subtitleOverlay);
         }
 
+        // Get subtitle text element
+        const subtitleText = document.getElementById('subtitle-text');
+
         // Restore normal positioning with !important
         subtitleOverlay.style.cssText = \`
+          display: block !important;
+          visibility: visible !important;
+          opacity: 1 !important;
           position: absolute !important;
           bottom: 10px !important;
           left: 0 !important;
@@ -392,6 +431,25 @@ export default function YouTubeSubtitlePlayer({
           text-align: center !important;
           padding: 0 16px !important;
         \`;
+
+        // Restore normal subtitle text style
+        if (subtitleText) {
+          subtitleText.style.cssText = \`
+            display: inline-block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            background: rgba(0, 0, 0, 0.9) !important;
+            color: #fff !important;
+            font-size: 14px !important;
+            font-weight: 600 !important;
+            padding: 8px 14px !important;
+            border-radius: 4px !important;
+            max-width: 90% !important;
+            word-wrap: break-word !important;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 1) !important;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.8) !important;
+          \`;
+        }
       }
     }
 
