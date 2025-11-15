@@ -12,7 +12,7 @@ const execPromise = promisify(exec);
 // Initialize Firebase Admin with Storage bucket
 admin.initializeApp({
   credential: admin.credential.applicationDefault(),
-  storageBucket: 'jp-town-flow-app.firebasestorage.app',
+  storageBucket: 'jp-town-flow-app.appspot.com',
 });
 
 const app = express();
