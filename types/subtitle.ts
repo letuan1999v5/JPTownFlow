@@ -2,6 +2,14 @@
 
 export type TargetLanguage = 'ja' | 'en' | 'vi' | 'zh' | 'ko' | 'pt' | 'es' | 'fil' | 'th' | 'id';
 
+export type TranslationStyle =
+  | 'standard'           // Standard - Default, clear, neutral
+  | 'educational'        // Educational/Tutorial - Technical accuracy, preserve terminology
+  | 'entertainment'      // Entertainment/Vlog - Casual, localize slang and jokes
+  | 'news'               // News/Documentary - Formal, objective, journalistic
+  | 'business'           // Business/Presentation - Professional, business terminology
+  | 'cinematic';         // Film/Storytelling - Creative, emotional, dramatic
+
 export type SubtitleFormat = 'srt' | 'vtt';
 
 export interface SubtitleCue {
@@ -27,10 +35,12 @@ export interface VideoMetadata {
   originalTranscript: SubtitleCue[];
   hasOriginalTranscript: boolean; // true if video has built-in subtitles
 
-  // Translation info
+  // Translation info (key format: 'language_style' e.g., 'vi_standard', 'en_educational')
   translations: {
-    [languageCode: string]: {
+    [translationKey: string]: {
       targetLanguage: TargetLanguage;
+      translationStyle: TranslationStyle;
+      videoTopic?: string;
       translatedTranscript: SubtitleCue[];
       translatedAt: Date;
       translatedBy: string; // userId
@@ -94,6 +104,8 @@ export interface TranslationRequest {
 
   // Translation settings
   targetLanguage: TargetLanguage;
+  translationStyle?: TranslationStyle; // Optional, defaults to 'standard'
+  videoTopic?: string; // Optional topic/subject for better context
 
   // Optional: if user uploads file
   audioFileUri?: string; // Local file URI
