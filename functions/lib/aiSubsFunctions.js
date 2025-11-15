@@ -40,6 +40,7 @@ exports.translateVideoSubtitles = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const generative_ai_1 = require("@google/generative-ai");
+const googleapis_1 = require("googleapis");
 const cors_1 = __importDefault(require("cors"));
 // Initialize CORS
 const corsHandler = (0, cors_1.default)({ origin: true });
@@ -128,157 +129,112 @@ function millisecondsToSRT(ms) {
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')},${String(milliseconds).padStart(3, '0')}`;
 }
 /**
- * Download YouTube audio via Cloud Run service (yt-dlp)
- * Returns the storage path
+ * Fetch YouTube captions using YouTube Data API v3
+ * This is the ONLY officially supported method by YouTube
  */
-async function downloadAndUploadYouTubeAudio(videoId, userId) {
-    var _a;
-    console.log(`Requesting audio download from Cloud Run for video: ${videoId}`);
+async function fetchYouTubeCaptions(videoId) {
+    var _a, _b, _c;
+    console.log(`Fetching captions for YouTube video: ${videoId}`);
     try {
-        // Get Cloud Run service URL from environment
-        const cloudRunUrl = ((_a = functions.config().ytdl) === null || _a === void 0 ? void 0 : _a.serviceurl) || process.env.YTDL_SERVICE_URL;
-        if (!cloudRunUrl) {
-            throw new Error('Cloud Run service URL not configured. Set with: firebase functions:config:set ytdl.serviceurl="https://your-service-url"');
+        // Get YouTube Data API key
+        const apiKey = ((_a = functions.config().youtube) === null || _a === void 0 ? void 0 : _a.apikey) || process.env.YOUTUBE_API_KEY;
+        if (!apiKey) {
+            throw new Error('YouTube Data API key not configured. Set with: firebase functions:config:set youtube.apikey="YOUR_API_KEY"');
         }
-        console.log(`Calling Cloud Run service: ${cloudRunUrl}/download`);
-        // Call Cloud Run service
-        const response = await fetch(`${cloudRunUrl}/download`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                videoId,
-                userId,
-            }),
+        // Initialize YouTube API client
+        const youtube = googleapis_1.google.youtube({
+            version: 'v3',
+            auth: apiKey,
         });
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Cloud Run service error (${response.status}): ${errorText}`);
+        // Step 1: List available caption tracks
+        console.log('Listing available caption tracks...');
+        const captionsListResponse = await youtube.captions.list({
+            part: ['snippet'],
+            videoId,
+        });
+        const captionTracks = captionsListResponse.data.items || [];
+        if (captionTracks.length === 0) {
+            throw new Error('NO_CAPTIONS_AVAILABLE');
         }
-        const result = await response.json();
-        if (!result.success) {
-            throw new Error(result.error || 'Cloud Run service returned failure');
+        console.log(`Found ${captionTracks.length} caption tracks`);
+        // Prioritize caption tracks: 1) Manual uploaded, 2) Auto-generated (ASR)
+        // Find best caption track (prefer non-ASR, then ASR)
+        let selectedTrack = captionTracks.find(track => { var _a; return ((_a = track.snippet) === null || _a === void 0 ? void 0 : _a.trackKind) !== 'asr'; });
+        if (!selectedTrack) {
+            selectedTrack = captionTracks.find(track => { var _a; return ((_a = track.snippet) === null || _a === void 0 ? void 0 : _a.trackKind) === 'asr'; });
         }
-        console.log(`✅ Audio downloaded via Cloud Run: ${result.storagePath}`);
-        console.log(`Duration: ${result.durationSeconds}s, Size: ${result.fileSize} bytes`);
-        return {
-            storagePath: result.storagePath,
-            durationSeconds: result.durationSeconds || 0,
-        };
-    }
-    catch (error) {
-        console.error('Error calling Cloud Run service:', error);
-        throw new Error(`Failed to download audio via Cloud Run: ${error.message}`);
-    }
-}
-/**
- * Generate transcript from audio file in Firebase Storage using Gemini
- * This uses Gemini 2.5 Flash for audio transcription
- */
-async function generateTranscriptFromStorage(storagePath) {
-    console.log(`Generating transcript from storage: ${storagePath}`);
-    try {
-        // Download audio from Storage
-        const bucket = admin.storage().bucket();
-        const file = bucket.file(storagePath);
-        // Check if file exists
-        const [exists] = await file.exists();
-        if (!exists) {
-            throw new Error(`Audio file not found in storage: ${storagePath}`);
+        if (!selectedTrack || !selectedTrack.id) {
+            throw new Error('No suitable caption track found');
         }
-        // Download file to memory
-        const [audioBuffer] = await file.download();
-        console.log(`Downloaded ${audioBuffer.length} bytes from storage`);
-        // Convert to base64 for Gemini
-        const audioBase64 = audioBuffer.toString('base64');
-        // Get file metadata for mime type
-        const [metadata] = await file.getMetadata();
-        const mimeType = metadata.contentType || 'audio/mpeg';
-        console.log(`Audio file: ${storagePath}, mime type: ${mimeType}, size: ${audioBuffer.length} bytes`);
-        // Use Gemini to transcribe audio
-        const genAI = getGeminiAPI();
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-        const prompt = `You are an expert audio transcriptionist. Transcribe this audio into subtitles with accurate timestamps.
-
-IMPORTANT RULES:
-1. Generate subtitle segments of 2-5 seconds each
-2. Include accurate start and end timestamps in milliseconds
-3. Break text at natural speech boundaries
-4. Output ONLY the subtitle data in this format:
-   index|startTimeMs|endTimeMs|text
-
-Example:
-1|0|2500|Welcome to this video
-2|2500|5000|Today we're going to talk about
-
-Transcribe the audio now:`;
-        const result = await model.generateContent([
-            prompt,
-            {
-                inlineData: {
-                    data: audioBase64,
-                    mimeType,
-                },
-            },
-        ]);
-        const response = result.response;
-        const transcriptText = response.text();
-        console.log(`Gemini transcription response length: ${transcriptText.length} chars`);
-        // Parse transcript
-        const lines = transcriptText.split('\n').filter(line => line.trim());
-        const subtitles = [];
-        for (const line of lines) {
-            const parts = line.split('|');
-            if (parts.length >= 4) {
-                const index = parseInt(parts[0]);
-                const startMs = parseInt(parts[1]);
-                const endMs = parseInt(parts[2]);
-                const text = parts.slice(3).join('|').trim();
-                if (!isNaN(index) && !isNaN(startMs) && !isNaN(endMs) && text) {
-                    subtitles.push({
-                        index,
-                        startTime: millisecondsToSRT(startMs),
-                        endTime: millisecondsToSRT(endMs),
-                        text,
-                    });
-                }
-            }
+        const trackKind = ((_b = selectedTrack.snippet) === null || _b === void 0 ? void 0 : _b.trackKind) || 'unknown';
+        const language = ((_c = selectedTrack.snippet) === null || _c === void 0 ? void 0 : _c.language) || 'unknown';
+        console.log(`Selected caption track: ${selectedTrack.id} (kind: ${trackKind}, language: ${language})`);
+        // Step 2: Download caption file
+        console.log('Downloading caption file...');
+        const captionDownloadResponse = await youtube.captions.download({
+            id: selectedTrack.id,
+            tfmt: 'srt', // Download as SRT format
+        });
+        const captionText = captionDownloadResponse.data;
+        if (!captionText || captionText.trim().length === 0) {
+            throw new Error('Downloaded caption file is empty');
         }
+        console.log(`Caption file downloaded: ${captionText.length} bytes`);
+        // Step 3: Parse SRT format
+        const subtitles = parseSRT(captionText);
         if (subtitles.length === 0) {
-            throw new Error('Failed to parse transcription from Gemini response');
+            throw new Error('Failed to parse SRT caption file');
         }
-        // DELETE audio file immediately (copyright compliance)
-        console.log(`Deleting audio file from storage: ${storagePath}`);
-        await file.delete();
-        console.log('✅ Audio file deleted from storage');
-        console.log(`✅ Generated ${subtitles.length} subtitle segments from audio`);
+        console.log(`✅ Parsed ${subtitles.length} subtitle segments from YouTube captions (${trackKind})`);
         return subtitles;
     }
     catch (error) {
-        console.error('Error generating transcript from storage:', error);
-        // Try to delete file even if processing failed
-        try {
-            const bucket = admin.storage().bucket();
-            await bucket.file(storagePath).delete();
-            console.log('✅ Cleaned up audio file after error');
+        // Handle specific error cases
+        if (error.message === 'NO_CAPTIONS_AVAILABLE') {
+            throw new Error('This video does not have captions. AI Subs currently only supports videos with captions (uploaded or auto-generated).');
         }
-        catch (deleteError) {
-            console.error('Failed to delete audio file:', deleteError);
-        }
-        throw new Error(`Failed to generate transcript: ${error.message}`);
+        console.error('Error fetching YouTube captions:', error);
+        throw new Error(`Failed to fetch captions: ${error.message}`);
     }
+}
+/**
+ * Parse SRT subtitle format
+ */
+function parseSRT(srtText) {
+    const subtitles = [];
+    const blocks = srtText.trim().split(/\n\s*\n/);
+    for (const block of blocks) {
+        const lines = block.split('\n');
+        if (lines.length < 3)
+            continue;
+        const index = parseInt(lines[0]);
+        const timeLine = lines[1];
+        const text = lines.slice(2).join('\n').trim();
+        // Parse timing (format: 00:00:00,000 --> 00:00:05,000)
+        const timeMatch = timeLine.match(/(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})/);
+        if (!timeMatch)
+            continue;
+        const startTime = timeMatch[1];
+        const endTime = timeMatch[2];
+        if (!isNaN(index) && startTime && endTime && text) {
+            subtitles.push({
+                index,
+                startTime,
+                endTime,
+                text,
+            });
+        }
+    }
+    return subtitles;
 }
 /**
  * Translate subtitles using Gemini
  */
-async function translateSubtitles(subtitles, targetLanguage, hasOriginalTranscript) {
+async function translateSubtitles(subtitles, targetLanguage) {
     var _a;
     const genAI = getGeminiAPI();
-    // Select model based on whether we have transcript
-    // With transcript: use Lite (cheaper, translation only)
-    // Without transcript: use Flash (ASR capability)
-    const modelName = hasOriginalTranscript ? 'gemini-2.5-flash-lite' : 'gemini-2.5-flash';
+    // Always use Flash Lite for caption translation (text-only, cheaper)
+    const modelName = 'gemini-2.5-flash-lite';
     const model = genAI.getGenerativeModel({ model: modelName });
     const languageName = LANGUAGE_NAMES[targetLanguage] || targetLanguage;
     // Build prompt
@@ -333,7 +289,7 @@ exports.translateVideoSubtitles = functions.https.onRequest((request, response) 
                 response.status(405).json({ success: false, error: 'Method not allowed' });
                 return;
             }
-            const { userId, userTier, videoSource, youtubeUrl, videoId: providedVideoId, storagePath, targetLanguage, } = request.body;
+            const { userId, userTier, videoSource, youtubeUrl, videoId: providedVideoId, targetLanguage, } = request.body;
             // Validate required fields
             if (!userId || !userTier || !videoSource || !targetLanguage) {
                 response.status(400).json({
@@ -408,41 +364,26 @@ exports.translateVideoSubtitles = functions.https.onRequest((request, response) 
                     return;
                 }
             }
-            // Download audio if not provided (server-side download)
-            let finalStoragePath = storagePath;
-            let videoDurationSeconds = 0;
-            if (!finalStoragePath) {
-                console.log('No storagePath provided, downloading audio on server...');
-                const downloadResult = await downloadAndUploadYouTubeAudio(videoId, userId);
-                finalStoragePath = downloadResult.storagePath;
-                videoDurationSeconds = downloadResult.durationSeconds;
-                console.log(`Audio downloaded and uploaded to: ${finalStoragePath}`);
-            }
-            else {
-                console.log(`Using client-provided audio at: ${finalStoragePath}`);
-            }
-            // Generate transcript from audio in Storage using Gemini
-            console.log('Generating transcript from storage using Gemini 2.5 Flash...');
-            const originalTranscript = await generateTranscriptFromStorage(finalStoragePath);
+            // Fetch YouTube captions using YouTube Data API v3 (official method)
+            console.log('Fetching YouTube captions via YouTube Data API v3...');
+            const originalTranscript = await fetchYouTubeCaptions(videoId);
             if (originalTranscript.length === 0) {
                 response.status(400).json({
                     success: false,
-                    error: 'Failed to generate transcript from video audio',
+                    error: 'Failed to fetch captions from YouTube',
                 });
                 return;
             }
-            // Calculate video duration if not already known
-            if (videoDurationSeconds === 0) {
-                const lastCue = originalTranscript[originalTranscript.length - 1];
-                const lastEndTimeMs = parseInt(lastCue.endTime.split(',')[0].split(':').reduce((acc, time) => (acc * 60) + parseInt(time), 0) + '000') + parseInt(lastCue.endTime.split(',')[1]);
-                videoDurationSeconds = Math.ceil(lastEndTimeMs / 1000);
-            }
+            // Calculate video duration from last subtitle
+            const lastCue = originalTranscript[originalTranscript.length - 1];
+            const lastEndTimeMs = parseInt(lastCue.endTime.split(',')[0].split(':').reduce((acc, time) => (acc * 60) + parseInt(time), 0) + '000') + parseInt(lastCue.endTime.split(',')[1]);
+            const videoDurationSeconds = Math.ceil(lastEndTimeMs / 1000);
             console.log(`Video duration: ${videoDurationSeconds}s (${Math.floor(videoDurationSeconds / 60)}m)`);
-            // Calculate cost for audio transcription
-            // Gemini 2.5 Flash audio: $1.00 per 1M tokens
-            // 1 second audio ≈ 25 tokens
-            const audioTokens = videoDurationSeconds * 25;
-            const geminiCostUSD = (audioTokens / 1000000) * 1.00; // Base cost
+            // Calculate cost for caption translation (text-only, very cheap)
+            // Gemini 2.5 Flash Lite: $0.075 per 1M input tokens, $0.30 per 1M output tokens
+            // Estimate: ~100 tokens per subtitle line for input+output
+            const estimatedTokens = originalTranscript.length * 100;
+            const geminiCostUSD = (estimatedTokens / 1000000) * 0.20; // Conservative estimate
             // Apply 1.5x margin
             const COST_MARGIN = 1.5;
             const finalCostUSD = geminiCostUSD * COST_MARGIN;
@@ -450,9 +391,10 @@ exports.translateVideoSubtitles = functions.https.onRequest((request, response) 
             const CREDIT_CONVERSION_RATE = 0.0001;
             const creditsRequired = Math.ceil(finalCostUSD / CREDIT_CONVERSION_RATE);
             console.log(`\n💰 Cost Breakdown:`);
-            console.log(`  Audio tokens: ${audioTokens.toLocaleString()}`);
-            console.log(`  Gemini base cost: $${geminiCostUSD.toFixed(4)}`);
-            console.log(`  With ${COST_MARGIN}x margin: $${finalCostUSD.toFixed(4)}`);
+            console.log(`  Subtitle count: ${originalTranscript.length}`);
+            console.log(`  Estimated tokens: ${estimatedTokens.toLocaleString()}`);
+            console.log(`  Gemini base cost: $${geminiCostUSD.toFixed(6)}`);
+            console.log(`  With ${COST_MARGIN}x margin: $${finalCostUSD.toFixed(6)}`);
             console.log(`  Credits required: ${creditsRequired}`);
             console.log(``);
             // Check user balance
@@ -490,9 +432,8 @@ exports.translateVideoSubtitles = functions.https.onRequest((request, response) 
             }
             // Translate subtitles
             console.log('Translating subtitles to', targetLanguage, '...');
-            const { translatedSubtitles, tokensUsed } = await translateSubtitles(originalTranscript, targetLanguage, false // No original transcript (generated from audio)
-            );
-            console.log(`Translation complete. Translation tokens used: ${tokensUsed}`);
+            const { translatedSubtitles, tokensUsed } = await translateSubtitles(originalTranscript, targetLanguage);
+            console.log(`Translation complete. Tokens used: ${tokensUsed}`);
             // Deduct credits (priority-based deduction: trial → monthly → purchase)
             console.log(`Deducting ${creditsRequired} credits...`);
             // Deduct with priority
@@ -526,10 +467,9 @@ exports.translateVideoSubtitles = functions.https.onRequest((request, response) 
                 translatedTranscript: translatedSubtitles,
                 translatedAt: admin.firestore.FieldValue.serverTimestamp(),
                 translatedBy: userId,
-                modelUsed: 'gemini-2.5-flash', // Audio transcription + translation
-                audioTokens,
+                modelUsed: 'gemini-2.5-flash-lite', // Caption translation only
                 translationTokens: tokensUsed,
-                totalTokens: audioTokens + tokensUsed,
+                totalTokens: tokensUsed,
                 geminiBaseCostUSD: geminiCostUSD,
                 finalCostUSD: finalCostUSD,
                 costMargin: COST_MARGIN,
@@ -550,14 +490,14 @@ exports.translateVideoSubtitles = functions.https.onRequest((request, response) 
                 await videoRef.set({
                     videoHashId: videoId,
                     videoSource: 'youtube',
-                    videoTitle: `YouTube Video ${videoId}`, // We don't have title from ytdl anymore
+                    videoTitle: `YouTube Video ${videoId}`,
                     videoDuration: videoDurationSeconds,
                     thumbnailUrl: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
                     youtubeUrl,
-                    originalLanguage: 'auto', // Auto-detected by Gemini
-                    originalTranscript, // Generated from audio
-                    hasOriginalTranscript: false, // Generated, not from captions
-                    transcriptSource: 'gemini_audio', // Indicate source
+                    originalLanguage: 'auto', // From YouTube captions
+                    originalTranscript, // From YouTube captions
+                    hasOriginalTranscript: true, // From YouTube captions (not generated)
+                    transcriptSource: 'youtube_captions', // YouTube Data API v3
                     translations: {
                         [targetLanguage]: translationData,
                     },
@@ -597,12 +537,12 @@ exports.translateVideoSubtitles = functions.https.onRequest((request, response) 
                 creditsCharged: creditsRequired,
                 historyId: historyRef.id,
                 message: 'Translation completed successfully',
-                // Cost breakdown for debugging (shown to all users temporarily)
+                // Cost breakdown for debugging
                 costBreakdown: {
                     videoDurationSeconds,
-                    audioTokens,
+                    subtitleCount: originalTranscript.length,
                     translationTokens: tokensUsed,
-                    totalTokens: audioTokens + tokensUsed,
+                    totalTokens: tokensUsed,
                     geminiBaseCostUSD: parseFloat(geminiCostUSD.toFixed(6)),
                     finalCostUSD: parseFloat(finalCostUSD.toFixed(6)),
                     costMargin: COST_MARGIN,
