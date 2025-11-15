@@ -80,8 +80,9 @@ export default function YouTubeSubtitlePlayer({
     text: sub.text
   }));
 
-  // Build YouTube embed URL with parameters
-  const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=1&modestbranding=1&rel=0&fs=1&playsinline=1&cc_load_policy=0&iv_load_policy=3&enablejsapi=1&origin=https://jptownflow.app`;
+  // Build YouTube embed URL with minimal parameters (avoid error 153)
+  // Remove enablejsapi and origin - these can trigger API restrictions
+  const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&controls=1&modestbranding=1&rel=0&cc_load_policy=0&iv_load_policy=3`;
 
   // HTML with direct iframe embed and custom subtitle overlay
   const htmlContent = `
@@ -276,7 +277,14 @@ export default function YouTubeSubtitlePlayer({
     <View style={[styles.container, { height: containerHeight }]}>
       <WebView
         ref={webViewRef}
-        source={{ html: htmlContent }}
+        source={{
+          html: htmlContent,
+          baseUrl: 'https://jptownflow.app' // Set proper origin for YouTube
+        }}
+        userAgent={Platform.OS === 'ios'
+          ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1'
+          : 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36'
+        }
         style={styles.webview}
         allowsInlineMediaPlayback={true}
         allowsFullscreenVideo={true}
