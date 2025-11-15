@@ -128,13 +128,14 @@ export default function YouTubeSubtitlePlayer({
     /* Subtitle overlay - use absolute positioning to stay within container */
     #subtitle-overlay {
       position: absolute;
-      bottom: 50px; /* Higher to avoid fullscreen button */
+      bottom: 12px; /* Close to bottom, aligned with fullscreen button */
       left: 0;
       right: 0;
       text-align: center;
       pointer-events: none;
       z-index: 999998 !important; /* Below fullscreen button */
-      padding: 0 16px;
+      padding: 0 16px 0 16px; /* Extra padding on right to avoid button */
+      padding-right: 60px; /* Space for fullscreen button */
       transform: translateZ(999px) !important; /* Create new stacking context on top */
       isolation: isolate; /* Create isolated stacking context */
       will-change: transform; /* GPU acceleration */
@@ -142,7 +143,7 @@ export default function YouTubeSubtitlePlayer({
 
     #subtitle-text {
       display: inline-block;
-      background: rgba(0, 0, 0, 0.9); /* Darker background for better visibility */
+      background: rgba(0, 0, 0, 0.7); /* Semi-transparent background */
       color: #fff;
       font-size: 14px;
       font-weight: 600; /* Bolder for better readability */
@@ -158,8 +159,9 @@ export default function YouTubeSubtitlePlayer({
     /* Landscape mode - responsive via CSS media query */
     @media (orientation: landscape) {
       #subtitle-overlay {
-        bottom: 55px; /* Higher in landscape to avoid button */
+        bottom: 15px; /* Close to bottom in landscape */
         padding: 0 30px;
+        padding-right: 70px; /* More space for button in landscape */
       }
 
       #subtitle-text {
@@ -223,9 +225,11 @@ export default function YouTubeSubtitlePlayer({
     #container:-moz-full-screen #subtitle-overlay,
     #container:-ms-fullscreen #subtitle-overlay {
       position: fixed !important;
-      bottom: 70px !important; /* Higher in fullscreen to avoid button */
+      bottom: 25px !important; /* Close to bottom in fullscreen */
       left: 0 !important;
       right: 0 !important;
+      padding: 0 20px !important;
+      padding-right: 80px !important; /* Space for button in fullscreen */
       z-index: 999998 !important; /* Below fullscreen button */
       transform: translateZ(9999px) !important;
     }
