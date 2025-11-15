@@ -1,3 +1,67 @@
 start: npx expo start --dev-client --clear --localhost
 Service [ytdl-service] revision [ytdl-service-00001-cgd] has been deployed and is serving 100 percent of traffic.
 Service URL: https://ytdl-service-140200291955.us-central1.run.app
+
+ĐIỀU KHOẢN DỊCH VỤ TÍNH NĂNG DỊCH PHỤ ĐỀ AI (AI SUBS)
+
+Cập nhật lần cuối: 15/11/2025
+
+Bằng việc truy cập hoặc sử dụng tính năng "AI Subs" (dịch phụ đề bằng Trí tuệ Nhân tạo) trong Ứng dụng của chúng tôi, bạn ("Người dùng") đồng ý bị ràng buộc bởi các Điều khoản và Điều kiện sau đây.
+
+MỤC 1: CAM KẾT VỀ NỘI DUNG VÀ BẢN QUYỀN
+
+1.1. Cam đoan về Quyền Sở hữu:
+Người dùng cam đoan và đảm bảo rằng Người dùng có đầy đủ quyền, giấy phép và sự đồng ý để upload video hoặc trích xuất phụ đề từ video đó và cho phép chúng tôi xử lý nội dung.
+
+1.2. Nguồn gốc Nội dung và Phân biệt Tính năng:
+Dịch vụ của chúng tôi hỗ trợ xử lý nội dung từ hai nguồn:
+
+(a) Trích xuất từ YouTube: Chỉ áp dụng cho các video có phụ đề (caption tracks) sẵn. Chúng tôi không hỗ trợ hoặc khuyến khích việc tải xuống video trái phép.
+
+(b) Upload từ Thiết bị: Áp dụng cho video mà Người dùng tự upload từ thiết bị cá nhân (chủ yếu là video tự tạo). Quá trình này có thể bao gồm xử lý ASR (Speech-to-Text), dịch thuật, và tùy chọn mã hóa phụ đề cứng (hardsub) vào video và cho phép Người dùng tải về.
+Người dùng chịu trách nhiệm duy nhất cho nguồn gốc và tính hợp pháp của mọi file video được cung cấp.
+
+1.3. Hiển thị Quảng cáo trong Trình phát YouTube:
+Người dùng thừa nhận rằng khi nhúng video YouTube, video sẽ được phát thông qua trình phát chính thức của YouTube. Việc hiển thị quảng cáo hoàn toàn do YouTube quyết định và không thể can thiệp được. Điều này áp dụng cho tất cả các gói dịch vụ trả phí (như Pro, Ultra, v.v.) của chúng tôi, và việc nâng cấp gói trong ứng dụng này KHÔNG loại bỏ quảng cáo YouTube.
+
+1.4. Miễn Trừ Trách nhiệm Tải xuống Trái phép:
+Người dùng hiểu rằng nếu upload nội dung được thu thập trái phép (ví dụ: video rip từ bên thứ ba), Người dùng tự chịu mọi trách nhiệm pháp lý trực tiếp.
+
+1.5. Cấp Quyền Tái Sử dụng Nền tảng (Platform Reuse License) & Quyền Riêng tư:
+Người dùng có quyền chọn chế độ Riêng tư (Private) hoặc Công khai (Public) cho bản dịch của mình.
+
+Chế độ Công khai: Người dùng đồng ý cấp cho chúng tôi quyền vĩnh viễn, không độc quyền, miễn phí bản quyền, và có thể cấp phép lại (sublicensable) để lưu trữ bản dịch và cho phép người dùng khác tái sử dụng bản dịch đó trong hệ thống "AI Subs" của chúng tôi theo cơ chế Royalty được định rõ tại Mục 2.
+
+Chế độ Riêng tư: Bản dịch sẽ chỉ được lưu trữ và truy cập bởi Người dùng, KHÔNG được chia sẻ cho người dùng khác, và KHÔNG được đưa vào hệ thống Royalty.
+
+1.6. Giới hạn Sử dụng của Người dùng:
+Người dùng chỉ được sử dụng bản dịch cho mục đích cá nhân, không được bán lại, phân phối hoặc thương mại hóa bản dịch một cách độc lập bên ngoài hệ thống Royalty được quy định bởi chúng tôi. Đồng thời, Người dùng chấp nhận rằng việc tạo video hardsub là một quy trình tiêu tốn tài nguyên máy chủ cao và phải tuân thủ mức phí Premium tương ứng.
+
+MỤC 2: CƠ CHẾ TÍNH PHÍ VÀ CHIA SẺ BẢN QUYỀN (ROYALTY)
+
+2.1. Cấu trúc Tính phí:
+Việc sử dụng tính năng "AI Subs" sẽ bị tính phí theo cấu trúc tín dụng (credits) dựa trên nguồn nội dung và cấp độ xử lý. Tính năng hardsub video được coi là dịch vụ Premium và sẽ có mức phí cao hơn đáng kể so với dịch vụ dịch phụ đề thuần túy.
+
+2.2. Cơ chế Chia sẻ Bản quyền (Royalty Flow) - Cấu trúc Phân biệt:
+Chỉ áp dụng khi Người dùng chọn chế độ Công khai cho bản dịch gốc mới ("Bản dịch Gốc") và bản dịch đó được người dùng khác tái sử dụng:
+
+Đối với bản dịch từ YouTube URL: Người dùng tạo Bản dịch Gốc sẽ được hoàn lại một tỷ lệ (40%) credits từ phí tái sử dụng do người dùng thứ hai chi trả.
+
+Đối với bản dịch từ Video Tự Upload (Content Creator): Người dùng tạo Bản dịch Gốc có quyền tự quy định giá (credits) cho bản dịch của mình. Hệ thống sẽ thu 15% trên giá đó làm phí dịch vụ nền tảng (Platform Fee), và 85% còn lại sẽ được chuyển cho Người dùng tạo Bản dịch Gốc.
+
+2.3. Chính sách Hoàn phí Xử lý:
+Tổng chi phí xử lý sẽ được hoàn lại đầy đủ (bao gồm Phí Cơ bản và Phí Dịch thuật ước tính) nếu quá trình xử lý thất bại trước khi bản dịch được lưu trữ thành công vào cơ sở dữ liệu do lỗi của hệ thống của chúng tôi. Nếu bản dịch đã được lưu trữ thành công, chi phí sẽ không được hoàn lại.
+
+MỤC 3: GIỚI HẠN TRÁCH NHIỆM VÀ BỒI THƯỜNG
+
+3.1. Miễn trừ Dịch vụ:
+Chúng tôi cung cấp dịch vụ "AI Subs" trên cơ sở "nguyên trạng" (as is) và không đảm bảo rằng bản dịch sẽ chính xác tuyệt đối, không lỗi, hoặc luôn có sẵn. Người dùng có trách nhiệm xác minh lại bản dịch cuối cùng trước khi sử dụng hoặc phân phối.
+
+3.2. Bảo vệ Trách nhiệm (Indemnification):
+
+Nội dung YouTube: Đối với nội dung được trích xuất hợp pháp từ YouTube theo URL (chỉ lấy phụ đề), chúng tôi cam kết việc dịch và hiển thị phụ đề của chúng tôi tuân thủ các Điều khoản Dịch vụ của YouTube (không chỉnh sửa trình phát).
+
+Nội dung Tự Upload: Người dùng đồng ý chịu trách nhiệm và bảo vệ chúng tôi khỏi mọi khiếu nại, yêu cầu hoặc chi phí pháp lý phát sinh từ video/file mà Người dùng TỰ TẢI LÊN từ thiết bị cá nhân (vì chúng tôi không kiểm soát nguồn gốc của file đó).
+
+3.3. Giới hạn Trách nhiệm của Chúng tôi:
+Chúng tôi sẽ không chịu trách nhiệm đối với bất kỳ thiệt hại nào (dù trực tiếp hay gián tiếp) ngoài phạm vi giới hạn của khoản phí dịch vụ mà bạn đã chi trả.
