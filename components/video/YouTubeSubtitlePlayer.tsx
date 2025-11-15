@@ -1,7 +1,7 @@
 // components/video/YouTubeSubtitlePlayer.tsx
 // YouTube player with custom subtitle overlay using WebView
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, Dimensions, Text } from 'react-native';
+import { View, StyleSheet, Dimensions, Text, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { SubtitleCue } from '../../types/subtitle';
 
@@ -18,9 +18,21 @@ export default function YouTubeSubtitlePlayer({
   onError,
   onEnd,
 }: YouTubeSubtitlePlayerProps) {
-  const [currentSubtitle, setCurrentSubtitle] = useState<string>('');
   const webViewRef = useRef<WebView>(null);
+  const [dimensions, setDimensions] = useState(Dimensions.get('window'));
   const [playerReady, setPlayerReady] = useState(false);
+
+  // Listen to orientation/dimension changes
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+      setDimensions(window);
+    });
+
+    return () => subscription?.remove();
+  }, []);
+
+  // Detect if landscape mode
+  const isLandscape = dimensions.width > dimensions.height;
 
   // Extract video ID from YouTube URL
   const getVideoId = (url: string): string | null => {
@@ -48,35 +60,6 @@ export default function YouTubeSubtitlePlayer({
     );
   }
 
-  // Convert SRT time format (HH:MM:SS,mmm) to seconds
-  const srtTimeToSeconds = (srtTime: string): number => {
-    const parts = srtTime.replace(',', '.').split(':');
-    const hours = parseInt(parts[0]);
-    const minutes = parseInt(parts[1]);
-    const seconds = parseFloat(parts[2]);
-    return hours * 3600 + minutes * 60 + seconds;
-  };
-
-  // Convert subtitles to WebVTT format for YouTube player
-  const subtitlesToWebVTT = (subs: SubtitleCue[]): string => {
-    let vtt = 'WEBVTT\n\n';
-
-    subs.forEach((sub) => {
-      const start = srtTimeToSeconds(sub.startTime).toFixed(3);
-      const end = srtTimeToSeconds(sub.endTime).toFixed(3);
-
-      vtt += `${sub.index}\n`;
-      vtt += `${start} --> ${end}\n`;
-      vtt += `${sub.text}\n\n`;
-    });
-
-    return vtt;
-  };
-
-  // Generate WebVTT blob URL
-  const vttContent = subtitlesToWebVTT(subtitles);
-  const vttBlob = `data:text/vtt;base64,${btoa(unescape(encodeURIComponent(vttContent)))}`;
-
   // HTML template with YouTube iframe and custom subtitle overlay
   const htmlContent = `
 <!DOCTYPE html>
@@ -90,16 +73,18 @@ export default function YouTubeSubtitlePlayer({
       box-sizing: border-box;
     }
 
-    body {
+    html, body {
+      width: 100%;
+      height: 100%;
       background: #000;
       overflow: hidden;
-      font-family: Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
     }
 
     #player-container {
       position: relative;
-      width: 100vw;
-      height: 100vh;
+      width: 100%;
+      height: 100%;
       background: #000;
     }
 
@@ -111,41 +96,53 @@ export default function YouTubeSubtitlePlayer({
       height: 100%;
     }
 
+    /* Subtitle overlay - positioned at bottom with responsive sizing */
     #subtitle-overlay {
-      position: absolute;
-      bottom: 80px;
+      position: fixed;
+      bottom: ${isLandscape ? '60px' : '80px'};
       left: 0;
       right: 0;
       text-align: center;
       pointer-events: none;
-      z-index: 1000;
-      padding: 0 20px;
+      z-index: 9999;
+      padding: 0 ${isLandscape ? '60px' : '20px'};
     }
 
     #subtitle-text {
       display: inline-block;
-      background: rgba(0, 0, 0, 0.8);
+      background: rgba(0, 0, 0, 0.85);
       color: #fff;
-      font-size: 18px;
-      line-height: 1.4;
-      padding: 8px 16px;
-      border-radius: 4px;
-      max-width: 90%;
+      font-size: ${isLandscape ? '20px' : '18px'};
+      font-weight: 500;
+      line-height: 1.5;
+      padding: ${isLandscape ? '10px 20px' : '8px 16px'};
+      border-radius: 6px;
+      max-width: ${isLandscape ? '85%' : '90%'};
       word-wrap: break-word;
-      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+      text-shadow: 2px 2px 6px rgba(0, 0, 0, 0.9);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
     }
 
     .hidden {
-      display: none;
+      display: none !important;
+    }
+
+    /* Ensure fullscreen works properly */
+    #player iframe {
+      border: 0;
+      width: 100%;
+      height: 100%;
     }
   </style>
 </head>
 <body>
   <div id="player-container">
     <div id="player"></div>
-    <div id="subtitle-overlay">
-      <div id="subtitle-text" class="hidden"></div>
-    </div>
+  </div>
+
+  <!-- Subtitle overlay outside player container to ensure it stays on top -->
+  <div id="subtitle-overlay">
+    <div id="subtitle-text" class="hidden"></div>
   </div>
 
   <script>
@@ -154,11 +151,16 @@ export default function YouTubeSubtitlePlayer({
 
     // Convert SRT time to seconds
     function srtTimeToSeconds(srtTime) {
-      const parts = srtTime.replace(',', '.').split(':');
-      const hours = parseInt(parts[0]);
-      const minutes = parseInt(parts[1]);
-      const seconds = parseFloat(parts[2]);
-      return hours * 3600 + minutes * 60 + seconds;
+      try {
+        const parts = srtTime.replace(',', '.').split(':');
+        const hours = parseInt(parts[0]) || 0;
+        const minutes = parseInt(parts[1]) || 0;
+        const seconds = parseFloat(parts[2]) || 0;
+        return hours * 3600 + minutes * 60 + seconds;
+      } catch (e) {
+        console.error('Error parsing SRT time:', srtTime, e);
+        return 0;
+      }
     }
 
     // Convert subtitles to timeline
@@ -183,23 +185,35 @@ export default function YouTubeSubtitlePlayer({
 
     // Initialize player when API is ready
     function onYouTubeIframeAPIReady() {
-      player = new YT.Player('player', {
-        videoId: '${videoId}',
-        playerVars: {
-          autoplay: 1,
-          controls: 1,
-          modestbranding: 1,
-          rel: 0,
-          showinfo: 0,
-          fs: 1,
-          playsinline: 1
-        },
-        events: {
-          onReady: onPlayerReady,
-          onStateChange: onPlayerStateChange,
-          onError: onPlayerError
-        }
-      });
+      try {
+        player = new YT.Player('player', {
+          videoId: '${videoId}',
+          width: '100%',
+          height: '100%',
+          playerVars: {
+            autoplay: 1,
+            controls: 1,
+            modestbranding: 1,
+            rel: 0,
+            showinfo: 0,
+            fs: 1, // Enable fullscreen button
+            playsinline: 1,
+            cc_load_policy: 0, // Disable YouTube's default captions
+            iv_load_policy: 3 // Disable annotations
+          },
+          events: {
+            onReady: onPlayerReady,
+            onStateChange: onPlayerStateChange,
+            onError: onPlayerError
+          }
+        });
+      } catch (error) {
+        console.error('Error creating YouTube player:', error);
+        window.ReactNativeWebView?.postMessage(JSON.stringify({
+          type: 'error',
+          error: 'Failed to create player: ' + error.message
+        }));
+      }
     }
 
     function onPlayerReady(event) {
@@ -215,7 +229,8 @@ export default function YouTubeSubtitlePlayer({
       }
 
       // Start/stop subtitle sync based on play state
-      if (event.data === 1) { // Playing
+      // YT.PlayerState.PLAYING = 1
+      if (event.data === 1) {
         startSubtitleSync();
       } else {
         stopSubtitleSync();
@@ -224,9 +239,19 @@ export default function YouTubeSubtitlePlayer({
 
     function onPlayerError(event) {
       console.error('YouTube player error:', event.data);
+      const errorMessages = {
+        2: 'Invalid video ID',
+        5: 'HTML5 player error',
+        100: 'Video not found or private',
+        101: 'Video not allowed to be played in embedded players',
+        150: 'Video not allowed to be played in embedded players'
+      };
+
+      const errorMsg = errorMessages[event.data] || 'Unknown error: ' + event.data;
+
       window.ReactNativeWebView?.postMessage(JSON.stringify({
         type: 'error',
-        error: 'Player error: ' + event.data
+        error: errorMsg
       }));
     }
 
@@ -235,10 +260,16 @@ export default function YouTubeSubtitlePlayer({
       if (updateInterval) return;
 
       updateInterval = setInterval(() => {
-        if (!player || !player.getCurrentTime) return;
+        try {
+          if (!player || typeof player.getCurrentTime !== 'function') {
+            return;
+          }
 
-        const currentTime = player.getCurrentTime();
-        updateSubtitle(currentTime);
+          const currentTime = player.getCurrentTime();
+          updateSubtitle(currentTime);
+        } catch (error) {
+          console.error('Error in subtitle sync:', error);
+        }
       }, 100); // Update every 100ms for smooth subtitle transitions
     }
 
@@ -251,6 +282,7 @@ export default function YouTubeSubtitlePlayer({
 
     function updateSubtitle(currentTime) {
       const subtitleElement = document.getElementById('subtitle-text');
+      if (!subtitleElement) return;
 
       // Find current subtitle
       let foundIndex = -1;
@@ -277,10 +309,13 @@ export default function YouTubeSubtitlePlayer({
     // Cleanup on unload
     window.addEventListener('beforeunload', () => {
       stopSubtitleSync();
-      if (player && player.destroy) {
+      if (player && typeof player.destroy === 'function') {
         player.destroy();
       }
     });
+
+    // Log ready state
+    console.log('YouTube player script loaded, waiting for API...');
   </script>
 </body>
 </html>
@@ -293,12 +328,15 @@ export default function YouTubeSubtitlePlayer({
 
       switch (data.type) {
         case 'ready':
+          console.log('YouTube player ready');
           setPlayerReady(true);
           break;
         case 'ended':
+          console.log('Video ended');
           onEnd?.();
           break;
         case 'error':
+          console.error('Player error:', data.error);
           onError?.(new Error(data.error));
           break;
       }
@@ -307,13 +345,19 @@ export default function YouTubeSubtitlePlayer({
     }
   };
 
+  // Calculate container height based on orientation
+  const containerHeight = isLandscape
+    ? dimensions.height // Fullscreen in landscape
+    : dimensions.width * (9 / 16); // 16:9 aspect ratio in portrait
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { height: containerHeight }]}>
       <WebView
         ref={webViewRef}
         source={{ html: htmlContent }}
         style={styles.webview}
         allowsInlineMediaPlayback={true}
+        allowsFullscreenVideo={true}
         mediaPlaybackRequiresUserAction={false}
         javaScriptEnabled={true}
         domStorageEnabled={true}
@@ -321,10 +365,15 @@ export default function YouTubeSubtitlePlayer({
         onError={(syntheticEvent) => {
           const { nativeEvent } = syntheticEvent;
           console.error('WebView error:', nativeEvent);
-          onError?.(new Error('WebView error'));
+          onError?.(new Error('WebView failed to load'));
         }}
         scrollEnabled={false}
         bounces={false}
+        showsHorizontalScrollIndicator={false}
+        showsVerticalScrollIndicator={false}
+        // Android specific settings
+        mixedContentMode="always"
+        androidLayerType="hardware"
       />
     </View>
   );
@@ -333,7 +382,6 @@ export default function YouTubeSubtitlePlayer({
 const styles = StyleSheet.create({
   container: {
     width: '100%',
-    height: Dimensions.get('window').width * (9 / 16), // 16:9 aspect ratio
     backgroundColor: '#000',
   },
   webview: {
@@ -345,9 +393,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#000',
+    padding: 20,
   },
   errorText: {
     color: '#fff',
     fontSize: 16,
+    textAlign: 'center',
   },
 });
