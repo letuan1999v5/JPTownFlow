@@ -5,7 +5,11 @@ Production-ready Cloud Run service for downloading YouTube audio using yt-dlp.
 ## Features
 
 - ✅ Uses yt-dlp (most powerful YouTube downloader)
-- ✅ Bypasses YouTube bot detection
+- ✅ Multiple fallback strategies to bypass YouTube bot detection:
+  - iOS client
+  - Multi-client fallback (android+ios+web)
+  - Android creator client
+  - Default client
 - ✅ Uploads directly to Firebase Storage
 - ✅ Auto-cleanup of temporary files
 - ✅ Scalable with Cloud Run

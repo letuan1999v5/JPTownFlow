@@ -55,24 +55,86 @@ app.post('/download', async (req, res) => {
     // Ensure temp directory exists
     await ensureTempDir();
 
-    // Download audio using yt-dlp
-    // Options:
-    // -x: Extract audio
-    // --audio-format mp3: Convert to MP3
-    // --audio-quality 9: Lowest quality (smallest file)
-    // -o: Output template
-    // --no-playlist: Don't download playlist
-    // --extractor-args: Use android client to bypass bot detection
-    const ytdlCommand = `yt-dlp -x --audio-format mp3 --audio-quality 9 -o "${outputPath}" --no-playlist --extractor-args "youtube:player_client=android" "${videoUrl}"`;
+    // Download audio using yt-dlp with multiple fallback strategies
+    // Try different player clients in order: iOS, Android+iOS+Web fallback, then default
+    const strategies = [
+      {
+        name: 'iOS client',
+        args: '--extractor-args "youtube:player_client=ios"',
+      },
+      {
+        name: 'Multi-client fallback (android,ios,web)',
+        args: '--extractor-args "youtube:player_client=android,ios,web"',
+      },
+      {
+        name: 'Android creator client',
+        args: '--extractor-args "youtube:player_client=android_creator"',
+      },
+      {
+        name: 'Default (no client override)',
+        args: '',
+      },
+    ];
 
-    console.log('Executing yt-dlp command...');
-    const { stdout, stderr } = await execPromise(ytdlCommand, {
-      timeout: 300000, // 5 minutes timeout
-    });
+    let lastError = null;
+    let downloadSuccess = false;
 
-    console.log('yt-dlp stdout:', stdout);
-    if (stderr) {
-      console.log('yt-dlp stderr:', stderr);
+    for (const strategy of strategies) {
+      try {
+        console.log(`Trying strategy: ${strategy.name}`);
+
+        // Build yt-dlp command
+        // -x: Extract audio
+        // --audio-format mp3: Convert to MP3
+        // --audio-quality 9: Lowest quality (smallest file)
+        // -o: Output template
+        // --no-playlist: Don't download playlist
+        const baseCommand = `yt-dlp -x --audio-format mp3 --audio-quality 9 -o "${outputPath}" --no-playlist`;
+        const ytdlCommand = strategy.args
+          ? `${baseCommand} ${strategy.args} "${videoUrl}"`
+          : `${baseCommand} "${videoUrl}"`;
+
+        console.log(`Executing: ${ytdlCommand}`);
+        const { stdout, stderr } = await execPromise(ytdlCommand, {
+          timeout: 300000, // 5 minutes timeout
+        });
+
+        console.log('yt-dlp stdout:', stdout);
+        if (stderr) {
+          console.log('yt-dlp stderr:', stderr);
+        }
+
+        // Check if download succeeded
+        try {
+          const stats = await fs.stat(outputPath);
+          if (stats && stats.size > 0) {
+            console.log(`✅ Success with ${strategy.name}: ${stats.size} bytes`);
+            downloadSuccess = true;
+            break;
+          }
+        } catch (statError) {
+          // File doesn't exist, try next strategy
+          console.log(`File not created with ${strategy.name}, trying next...`);
+          continue;
+        }
+      } catch (error) {
+        console.log(`❌ Failed with ${strategy.name}: ${error.message}`);
+        lastError = error;
+
+        // Clean up failed attempt
+        try {
+          await fs.unlink(outputPath);
+        } catch (cleanupError) {
+          // Ignore
+        }
+
+        // Continue to next strategy
+        continue;
+      }
+    }
+
+    if (!downloadSuccess) {
+      throw new Error(`All download strategies failed. Last error: ${lastError?.message || 'Unknown error'}`);
     }
 
     // Check if file was downloaded
