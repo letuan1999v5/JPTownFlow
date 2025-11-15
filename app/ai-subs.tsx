@@ -18,14 +18,18 @@ import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import { CreditDisplay, CreditInfoModal } from '../components/credits';
 import { translateVideoSubtitles, checkTranslationCache, calculateCredits } from '../services/aiSubsService';
-import { TranslationRequest } from '../types/subtitle';
-
-type TargetLanguage = 'ja' | 'en' | 'vi' | 'zh' | 'ko' | 'pt' | 'es' | 'fil' | 'th' | 'id';
+import { TranslationRequest, TargetLanguage, TranslationStyle } from '../types/subtitle';
 
 interface LanguageOption {
   code: TargetLanguage;
   name: string;
   nativeName: string;
+}
+
+interface TranslationStyleOption {
+  code: TranslationStyle;
+  name: string;
+  description: string;
 }
 
 export default function AISubsScreen() {
@@ -40,7 +44,10 @@ export default function AISubsScreen() {
   // States
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [targetLanguage, setTargetLanguage] = useState<TargetLanguage>(i18n.language as TargetLanguage || 'en');
+  const [translationStyle, setTranslationStyle] = useState<TranslationStyle>('standard');
+  const [videoTopic, setVideoTopic] = useState('');
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
+  const [showStylePicker, setShowStylePicker] = useState(false);
   const [showCreditInfo, setShowCreditInfo] = useState(false);
   const [loading, setLoading] = useState(false);
   const [processingStep, setProcessingStep] = useState('');
@@ -57,6 +64,40 @@ export default function AISubsScreen() {
     { code: 'fil', name: 'Filipino', nativeName: 'Filipino' },
     { code: 'th', name: 'Thai', nativeName: 'ไทย' },
     { code: 'id', name: 'Indonesian', nativeName: 'Bahasa Indonesia' },
+  ];
+
+  // Translation style options
+  const translationStyles: TranslationStyleOption[] = [
+    {
+      code: 'standard',
+      name: t('styleStandard', 'Tiêu chuẩn'),
+      description: t('styleStandardDesc', 'Phù hợp cho hầu hết video. Rõ ràng, dễ hiểu, ngôn ngữ chuẩn.'),
+    },
+    {
+      code: 'educational',
+      name: t('styleEducational', 'Giáo dục / Hướng dẫn'),
+      description: t('styleEducationalDesc', 'Dùng cho bài giảng, video kỹ thuật, hướng dẫn (lập trình, nấu ăn, v.v.).'),
+    },
+    {
+      code: 'entertainment',
+      name: t('styleEntertainment', 'Giải trí / Vlog'),
+      description: t('styleEntertainmentDesc', 'Dùng cho vlog đời thường, video hài, stream game, podcast thân mật.'),
+    },
+    {
+      code: 'news',
+      name: t('styleNews', 'Tin tức / Phóng sự'),
+      description: t('styleNewsDesc', 'Dùng cho bản tin, video chính luận, phim tài liệu.'),
+    },
+    {
+      code: 'business',
+      name: t('styleBusiness', 'Doanh nghiệp / Thuyết trình'),
+      description: t('styleBusinessDesc', 'Dùng cho video nội bộ công ty, bài thuyết trình, video marketing.'),
+    },
+    {
+      code: 'cinematic',
+      name: t('styleCinematic', 'Phim / Kể chuyện'),
+      description: t('styleCinematicDesc', 'Dùng cho đoạn phim, video kể chuyện, tự sự, review phim.'),
+    },
   ];
 
   // Duration limits based on tier
@@ -189,6 +230,8 @@ export default function AISubsScreen() {
         youtubeUrl,
         videoId,
         targetLanguage,
+        translationStyle,
+        videoTopic: videoTopic.trim() || undefined, // Only include if provided
       };
 
       const result = await translateVideoSubtitles(request);
@@ -263,8 +306,9 @@ export default function AISubsScreen() {
     router.push('/ai-subs-history');
   };
 
-  // Get selected language display
+  // Get selected language and style display
   const selectedLanguage = languages.find(l => l.code === targetLanguage);
+  const selectedStyle = translationStyles.find(s => s.code === translationStyle);
 
   return (
     <View style={styles.container}>
@@ -379,6 +423,75 @@ export default function AISubsScreen() {
               ))}
             </View>
           )}
+        </View>
+
+        {/* Translation Style Picker */}
+        <View style={styles.inputSection}>
+          <Text style={styles.label}>
+            {t('translationStyle', 'Phong cách dịch')}
+          </Text>
+          <TouchableOpacity
+            style={styles.picker}
+            onPress={() => setShowStylePicker(!showStylePicker)}
+            disabled={loading}
+          >
+            <View style={{flex: 1}}>
+              <Text style={styles.pickerText}>{selectedStyle?.name}</Text>
+              <Text style={styles.pickerSubtext}>{selectedStyle?.description}</Text>
+            </View>
+            <ChevronDown size={20} color="#6B7280" />
+          </TouchableOpacity>
+
+          {showStylePicker && (
+            <View style={styles.pickerDropdown}>
+              {translationStyles.map((style) => (
+                <TouchableOpacity
+                  key={style.code}
+                  style={[
+                    styles.pickerOption,
+                    translationStyle === style.code && styles.pickerOptionSelected,
+                  ]}
+                  onPress={() => {
+                    setTranslationStyle(style.code);
+                    setShowStylePicker(false);
+                  }}
+                >
+                  <View>
+                    <Text
+                      style={[
+                        styles.pickerOptionText,
+                        translationStyle === style.code && styles.pickerOptionTextSelected,
+                      ]}
+                    >
+                      {style.name}
+                    </Text>
+                    <Text style={styles.pickerOptionDesc}>{style.description}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+
+        {/* Video Topic Input (Optional) */}
+        <View style={styles.inputSection}>
+          <Text style={styles.label}>
+            {t('videoTopic', 'Chủ đề video')}{' '}
+            <Text style={styles.optional}>({t('optional', 'Tùy chọn')})</Text>
+          </Text>
+          <TextInput
+            style={styles.input}
+            value={videoTopic}
+            onChangeText={setVideoTopic}
+            placeholder={t('videoTopicPlaceholder', 'VD: Lập trình React, Nấu ăn Ý, Cơ học lượng tử...')}
+            placeholderTextColor="#9CA3AF"
+            autoCapitalize="sentences"
+            editable={!loading}
+            multiline={false}
+          />
+          <Text style={styles.hint}>
+            {t('videoTopicHint', '💡 Gợi ý: Nhập chủ đề để AI dịch chính xác hơn với thuật ngữ chuyên ngành')}
+          </Text>
         </View>
 
         {/* Generate Button */}
@@ -594,6 +707,27 @@ const styles = StyleSheet.create({
   pickerOptionTextSelected: {
     fontWeight: '600',
     color: '#EF4444',
+  },
+  pickerSubtext: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 2,
+  },
+  pickerOptionDesc: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  optional: {
+    fontSize: 13,
+    color: '#9CA3AF',
+    fontWeight: '400',
+  },
+  hint: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 6,
+    lineHeight: 16,
   },
   generateButton: {
     flexDirection: 'row',
