@@ -173,26 +173,58 @@ export default function YouTubeSubtitlePlayer({
       display: none !important;
     }
 
-    /* Fullscreen support - when iframe goes fullscreen */
-    #youtube-player:fullscreen ~ #subtitle-overlay,
-    #youtube-player:-webkit-full-screen ~ #subtitle-overlay,
-    #youtube-player:-moz-full-screen ~ #subtitle-overlay,
-    #youtube-player:-ms-fullscreen ~ #subtitle-overlay {
-      position: fixed !important;
-      z-index: 2147483647 !important;
-      bottom: 20px !important;
-      transform: translateZ(9999px) !important;
+    /* Custom fullscreen button */
+    #custom-fullscreen-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 48px;
+      height: 48px;
+      background: rgba(0, 0, 0, 0.7);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      z-index: 999998;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: auto;
+      transition: background 0.2s;
     }
 
-    /* Also handle when container goes fullscreen */
+    #custom-fullscreen-btn:hover {
+      background: rgba(0, 0, 0, 0.9);
+    }
+
+    #custom-fullscreen-btn:active {
+      background: rgba(0, 0, 0, 1);
+    }
+
+    #custom-fullscreen-btn svg {
+      fill: white;
+      width: 24px;
+      height: 24px;
+    }
+
+    /* When container is in fullscreen */
     #container:fullscreen #subtitle-overlay,
     #container:-webkit-full-screen #subtitle-overlay,
     #container:-moz-full-screen #subtitle-overlay,
     #container:-ms-fullscreen #subtitle-overlay {
       position: fixed !important;
-      z-index: 2147483647 !important;
+      bottom: 60px !important;
+      left: 0 !important;
+      right: 0 !important;
+      z-index: 999999 !important;
       transform: translateZ(9999px) !important;
-      bottom: 80px !important;
+    }
+
+    #container:fullscreen,
+    #container:-webkit-full-screen,
+    #container:-moz-full-screen,
+    #container:-ms-fullscreen {
+      width: 100vw !important;
+      height: 100vh !important;
     }
   </style>
 </head>
@@ -200,6 +232,18 @@ export default function YouTubeSubtitlePlayer({
   <div id="container">
     <!-- YouTube player will be inserted here -->
     <div id="youtube-player"></div>
+
+    <!-- Custom fullscreen button -->
+    <button id="custom-fullscreen-btn" onclick="toggleFullscreen()" aria-label="Fullscreen">
+      <!-- Fullscreen expand icon -->
+      <svg id="expand-icon" viewBox="0 0 24 24">
+        <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+      </svg>
+      <!-- Fullscreen exit icon (hidden by default) -->
+      <svg id="compress-icon" viewBox="0 0 24 24" style="display: none;">
+        <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/>
+      </svg>
+    </button>
 
     <!-- Subtitle overlay inside container for fullscreen support -->
     <div id="subtitle-overlay">
@@ -232,7 +276,8 @@ export default function YouTubeSubtitlePlayer({
           rel: 0,
           cc_load_policy: 0,
           iv_load_policy: 3,
-          playsinline: 1
+          playsinline: 1,
+          fs: 0 // Disable YouTube's fullscreen button
         },
         events: {
           'onReady': onPlayerReady,
@@ -332,10 +377,52 @@ export default function YouTubeSubtitlePlayer({
       }
     }
 
-    // Handle fullscreen for subtitle visibility
+    // Toggle fullscreen for the entire container (video + subtitles)
+    function toggleFullscreen() {
+      const container = document.getElementById('container');
+      const expandIcon = document.getElementById('expand-icon');
+      const compressIcon = document.getElementById('compress-icon');
+
+      const isFullscreen = !!(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.mozFullScreenElement ||
+        document.msFullscreenElement
+      );
+
+      if (!isFullscreen) {
+        // Enter fullscreen
+        if (container.requestFullscreen) {
+          container.requestFullscreen();
+        } else if (container.webkitRequestFullscreen) {
+          container.webkitRequestFullscreen();
+        } else if (container.mozRequestFullScreen) {
+          container.mozRequestFullScreen();
+        } else if (container.msRequestFullscreen) {
+          container.msRequestFullscreen();
+        }
+
+        console.log('✅ Entered fullscreen with container (includes subtitle)');
+      } else {
+        // Exit fullscreen
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+          document.webkitExitFullscreen();
+        } else if (document.mozCancelFullScreen) {
+          document.mozCancelFullScreen();
+        } else if (document.msExitFullscreen) {
+          document.msExitFullscreen();
+        }
+
+        console.log('✅ Exited fullscreen');
+      }
+    }
+
+    // Handle fullscreen changes (toggle button icon)
     function handleFullscreenChange() {
-      const subtitleOverlay = document.getElementById('subtitle-overlay');
-      if (!subtitleOverlay) return;
+      const expandIcon = document.getElementById('expand-icon');
+      const compressIcon = document.getElementById('compress-icon');
 
       const isFullscreen = !!(
         document.fullscreenElement ||
@@ -345,111 +432,13 @@ export default function YouTubeSubtitlePlayer({
       );
 
       if (isFullscreen) {
-        console.log('🔴 FULLSCREEN DETECTED - Adjusting subtitle overlay');
-        // Move subtitle to fullscreen element
-        const fullscreenElement =
-          document.fullscreenElement ||
-          document.webkitFullscreenElement ||
-          document.mozFullScreenElement ||
-          document.msFullscreenElement;
-
-        console.log('🔴 Fullscreen element:', fullscreenElement?.tagName, fullscreenElement?.id);
-        console.log('🔴 Subtitle overlay parent before:', subtitleOverlay.parentElement?.tagName);
-
-        if (fullscreenElement && fullscreenElement !== subtitleOverlay.parentElement) {
-          fullscreenElement.appendChild(subtitleOverlay);
-          console.log('🔴 Moved subtitle to fullscreen element');
-        }
-
-        console.log('🔴 Subtitle overlay parent after:', subtitleOverlay.parentElement?.tagName);
-
-        // Get subtitle text element
-        const subtitleText = document.getElementById('subtitle-text');
-
-        // Force EVERYTHING with !important - use BRIGHT RED for debugging
-        subtitleOverlay.style.cssText = \`
-          display: block !important;
-          visibility: visible !important;
-          opacity: 1 !important;
-          position: fixed !important;
-          top: 50% !important;
-          left: 50% !important;
-          transform: translate(-50%, -50%) translateZ(9999px) !important;
-          z-index: 2147483647 !important;
-          pointer-events: none !important;
-          isolation: isolate !important;
-          will-change: transform !important;
-          width: 90% !important;
-          max-width: 800px !important;
-        \`;
-
-        // Style subtitle text with BRIGHT RED background for visibility
-        if (subtitleText) {
-          subtitleText.style.cssText = \`
-            display: inline-block !important;
-            visibility: visible !important;
-            opacity: 1 !important;
-            background: rgba(255, 0, 0, 0.9) !important;
-            color: #fff !important;
-            font-size: 32px !important;
-            font-weight: 700 !important;
-            padding: 20px 30px !important;
-            border-radius: 8px !important;
-            text-shadow: 3px 3px 6px rgba(0, 0, 0, 1) !important;
-            box-shadow: 0 5px 20px rgba(255, 0, 0, 0.9) !important;
-            border: 3px solid yellow !important;
-          \`;
-          console.log('🔴 Applied BRIGHT RED style to subtitle text');
-        }
-
-        console.log('🔴 Subtitle overlay computed display:', window.getComputedStyle(subtitleOverlay).display);
-        console.log('🔴 Subtitle overlay computed visibility:', window.getComputedStyle(subtitleOverlay).visibility);
-        console.log('🔴 Subtitle overlay computed z-index:', window.getComputedStyle(subtitleOverlay).zIndex);
+        expandIcon.style.display = 'none';
+        compressIcon.style.display = 'block';
+        console.log('📺 Fullscreen mode - subtitle overlay is inside container');
       } else {
-        console.log('🟢 Exited fullscreen - restoring subtitle overlay');
-        // Move subtitle back to container
-        const container = document.getElementById('container');
-        if (container && subtitleOverlay.parentElement !== container) {
-          container.appendChild(subtitleOverlay);
-        }
-
-        // Get subtitle text element
-        const subtitleText = document.getElementById('subtitle-text');
-
-        // Restore normal positioning with !important
-        subtitleOverlay.style.cssText = \`
-          display: block !important;
-          visibility: visible !important;
-          opacity: 1 !important;
-          position: absolute !important;
-          bottom: 10px !important;
-          left: 0 !important;
-          right: 0 !important;
-          z-index: 999999 !important;
-          pointer-events: none !important;
-          transform: translateZ(999px) !important;
-          text-align: center !important;
-          padding: 0 16px !important;
-        \`;
-
-        // Restore normal subtitle text style
-        if (subtitleText) {
-          subtitleText.style.cssText = \`
-            display: inline-block !important;
-            visibility: visible !important;
-            opacity: 1 !important;
-            background: rgba(0, 0, 0, 0.9) !important;
-            color: #fff !important;
-            font-size: 14px !important;
-            font-weight: 600 !important;
-            padding: 8px 14px !important;
-            border-radius: 4px !important;
-            max-width: 90% !important;
-            word-wrap: break-word !important;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 1) !important;
-            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.8) !important;
-          \`;
-        }
+        expandIcon.style.display = 'block';
+        compressIcon.style.display = 'none';
+        console.log('📺 Normal mode');
       }
     }
 
