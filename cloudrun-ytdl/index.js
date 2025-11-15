@@ -9,9 +9,10 @@ const admin = require('firebase-admin');
 
 const execPromise = promisify(exec);
 
-// Initialize Firebase Admin
+// Initialize Firebase Admin with Storage bucket
 admin.initializeApp({
   credential: admin.credential.applicationDefault(),
+  storageBucket: 'jp-town-flow-app.firebasestorage.app',
 });
 
 const app = express();
