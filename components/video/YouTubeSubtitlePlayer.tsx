@@ -133,8 +133,11 @@ export default function YouTubeSubtitlePlayer({
       right: 0;
       text-align: center;
       pointer-events: none;
-      z-index: 999999; /* Much higher than YouTube controls */
+      z-index: 999999 !important; /* Much higher than YouTube controls */
       padding: 0 16px;
+      transform: translateZ(999px) !important; /* Create new stacking context on top */
+      isolation: isolate; /* Create isolated stacking context */
+      will-change: transform; /* GPU acceleration */
     }
 
     #subtitle-text {
@@ -177,7 +180,8 @@ export default function YouTubeSubtitlePlayer({
     #youtube-player:-ms-fullscreen ~ #subtitle-overlay {
       position: fixed !important;
       z-index: 2147483647 !important;
-      bottom: 80px !important;
+      bottom: 20px !important;
+      transform: translateZ(9999px) !important;
     }
 
     /* Also handle when container goes fullscreen */
@@ -187,6 +191,7 @@ export default function YouTubeSubtitlePlayer({
     #container:-ms-fullscreen #subtitle-overlay {
       position: fixed !important;
       z-index: 2147483647 !important;
+      transform: translateZ(9999px) !important;
       bottom: 80px !important;
     }
   </style>
@@ -353,12 +358,20 @@ export default function YouTubeSubtitlePlayer({
         }
 
         // Force fixed positioning in fullscreen with very low bottom (near video bottom)
-        subtitleOverlay.style.position = 'fixed';
-        subtitleOverlay.style.bottom = '20px'; // Very close to bottom in fullscreen
-        subtitleOverlay.style.left = '0';
-        subtitleOverlay.style.right = '0';
-        subtitleOverlay.style.zIndex = '2147483647'; // Maximum z-index
-        subtitleOverlay.style.pointerEvents = 'none'; // Don't block controls
+        // Use cssText with !important to override everything
+        subtitleOverlay.style.cssText = \`
+          position: fixed !important;
+          bottom: 20px !important;
+          left: 0 !important;
+          right: 0 !important;
+          z-index: 2147483647 !important;
+          pointer-events: none !important;
+          transform: translateZ(9999px) !important;
+          isolation: isolate !important;
+          will-change: transform !important;
+          text-align: center !important;
+          padding: 0 16px !important;
+        \`;
       } else {
         console.log('Exited fullscreen - restoring subtitle overlay');
         // Move subtitle back to container
@@ -367,10 +380,18 @@ export default function YouTubeSubtitlePlayer({
           container.appendChild(subtitleOverlay);
         }
 
-        // Restore normal positioning
-        subtitleOverlay.style.position = 'absolute';
-        subtitleOverlay.style.bottom = '10px'; // Match CSS default
-        subtitleOverlay.style.zIndex = '999999'; // Match CSS default
+        // Restore normal positioning with !important
+        subtitleOverlay.style.cssText = \`
+          position: absolute !important;
+          bottom: 10px !important;
+          left: 0 !important;
+          right: 0 !important;
+          z-index: 999999 !important;
+          pointer-events: none !important;
+          transform: translateZ(999px) !important;
+          text-align: center !important;
+          padding: 0 16px !important;
+        \`;
       }
     }
 
