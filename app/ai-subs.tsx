@@ -39,6 +39,7 @@ export default function AISubsScreen() {
   const { creditBalance, refreshCreditBalance } = useSubscription();
 
   const isSuperAdmin = role === 'superadmin';
+  const isAdmin = role === 'admin' || isSuperAdmin;
   const userTier = subscription || 'FREE';
 
   // States
@@ -51,6 +52,11 @@ export default function AISubsScreen() {
   const [showCreditInfo, setShowCreditInfo] = useState(false);
   const [loading, setLoading] = useState(false);
   const [processingStep, setProcessingStep] = useState('');
+
+  // Admin multi-translation states
+  const [adminMode, setAdminMode] = useState(false);
+  const [selectedLanguages, setSelectedLanguages] = useState<TargetLanguage[]>([]);
+  const [selectedStyles, setSelectedStyles] = useState<TranslationStyle[]>([]);
 
   // Language options (10 languages supported by app)
   const languages: LanguageOption[] = [
@@ -132,6 +138,93 @@ export default function AISubsScreen() {
     return extractYouTubeVideoId(url) !== null;
   };
 
+  // Process batch translations for Admin mode
+  const processBatchTranslations = async () => {
+    const videoId = extractYouTubeVideoId(youtubeUrl);
+    if (!videoId) {
+      Alert.alert(t('error', 'Error'), t('couldNotExtractVideoId', 'Could not extract video ID'));
+      return;
+    }
+
+    const totalTranslations = selectedLanguages.length * selectedStyles.length;
+
+    // Confirm with admin
+    Alert.alert(
+      t('confirmBatchTranslation', 'Xác nhận dịch hàng loạt'),
+      t(
+        'confirmBatchTranslationMessage',
+        `Bạn sắp dịch ${totalTranslations} bản (${selectedLanguages.length} ngôn ngữ × ${selectedStyles.length} phong cách).\n\nChi phí ước tính: ~${totalTranslations * 20} credits.\n\nContinue?`
+      ),
+      [
+        { text: t('cancel', 'Cancel'), style: 'cancel' },
+        {
+          text: t('continue', 'Continue'),
+          onPress: async () => {
+            setLoading(true);
+            let successCount = 0;
+            let failCount = 0;
+
+            for (const lang of selectedLanguages) {
+              for (const style of selectedStyles) {
+                try {
+                  setProcessingStep(
+                    `${t('processing', 'Đang xử lý')} ${lang}_${style} (${successCount + failCount + 1}/${totalTranslations})...`
+                  );
+
+                  const request: TranslationRequest = {
+                    userId: user!.uid,
+                    userTier,
+                    videoSource: 'youtube',
+                    youtubeUrl,
+                    videoId,
+                    targetLanguage: lang,
+                    translationStyle: style,
+                    videoTopic: videoTopic.trim() || undefined,
+                  };
+
+                  const result = await translateVideoSubtitles(request);
+
+                  if (result.success) {
+                    successCount++;
+                  } else {
+                    failCount++;
+                  }
+                } catch (error) {
+                  console.error(`Failed to translate ${lang}_${style}:`, error);
+                  failCount++;
+                }
+              }
+            }
+
+            setLoading(false);
+            setProcessingStep('');
+
+            // Show results
+            await refreshCreditBalance();
+            Alert.alert(
+              t('batchTranslationComplete', 'Hoàn thành dịch hàng loạt'),
+              t(
+                'batchTranslationResult',
+                `Thành công: ${successCount}/${totalTranslations}\nThất bại: ${failCount}/${totalTranslations}`
+              ),
+              [
+                {
+                  text: t('ok', 'OK'),
+                  onPress: () => {
+                    // Reset selections
+                    setSelectedLanguages([]);
+                    setSelectedStyles([]);
+                    setAdminMode(false);
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
+  };
+
   // Handle subtitle generation
   const handleGenerateSubtitles = async () => {
     if (!youtubeUrl.trim()) {
@@ -139,6 +232,27 @@ export default function AISubsScreen() {
         t('error', 'Error'),
         t('pleaseEnterYouTubeUrl', 'Please enter a YouTube URL')
       );
+      return;
+    }
+
+    // Admin mode validation
+    if (adminMode) {
+      if (selectedLanguages.length === 0) {
+        Alert.alert(
+          t('error', 'Error'),
+          t('pleaseSelectLanguages', 'Vui lòng chọn ít nhất 1 ngôn ngữ')
+        );
+        return;
+      }
+      if (selectedStyles.length === 0) {
+        Alert.alert(
+          t('error', 'Error'),
+          t('pleaseSelectStyles', 'Vui lòng chọn ít nhất 1 phong cách')
+        );
+        return;
+      }
+      // Start batch processing for admin
+      await processBatchTranslations();
       return;
     }
 
@@ -160,12 +274,13 @@ export default function AISubsScreen() {
     setProcessingStep(t('checkingVideo', 'Checking video...'));
 
     try {
-      // Check cache first
+      // Check cache first with language + style combination
       setProcessingStep(t('checkingCache', 'Checking cache...'));
-      const cachedVideo = await checkTranslationCache(videoId, targetLanguage);
+      const translationKey = `${targetLanguage}_${translationStyle}`;
+      const cachedVideo = await checkTranslationCache(videoId, targetLanguage, translationStyle);
 
-      if (cachedVideo && cachedVideo.translations[targetLanguage]) {
-        // Found in cache - navigate to player immediately (FREE)
+      if (cachedVideo && cachedVideo.translations[translationKey]) {
+        // Found exact match (language + style) in cache - navigate to player immediately (FREE)
         Alert.alert(
           t('success', 'Success'),
           t('foundInCache', 'Translation found in cache! No credits charged.'),
@@ -175,7 +290,11 @@ export default function AISubsScreen() {
               onPress: () => {
                 router.push({
                   pathname: '/ai-subs-player',
-                  params: { videoHashId: videoId, targetLanguage },
+                  params: {
+                    videoHashId: videoId,
+                    targetLanguage,
+                    translationStyle,
+                  },
                 });
               },
             },
@@ -253,6 +372,7 @@ export default function AISubsScreen() {
                   params: {
                     videoHashId: result.videoHashId,
                     targetLanguage,
+                    translationStyle,
                     historyId: result.historyId,
                   },
                 });
@@ -493,6 +613,112 @@ export default function AISubsScreen() {
             {t('videoTopicHint', '💡 Gợi ý: Nhập chủ đề để AI dịch chính xác hơn với thuật ngữ chuyên ngành')}
           </Text>
         </View>
+
+        {/* Admin Multi-Translation Mode (Only for Admin/Super Admin) */}
+        {isAdmin && (
+          <View style={styles.adminSection}>
+            <View style={styles.adminHeader}>
+              <Text style={styles.adminTitle}>👑 {t('adminMode', 'Chế độ Admin')}</Text>
+              <TouchableOpacity
+                style={[styles.adminToggle, adminMode && styles.adminToggleActive]}
+                onPress={() => setAdminMode(!adminMode)}
+                disabled={loading}
+              >
+                <Text style={[styles.adminToggleText, adminMode && styles.adminToggleTextActive]}>
+                  {adminMode ? t('enabled', 'Bật') : t('disabled', 'Tắt')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {adminMode && (
+              <View style={styles.adminContent}>
+                <Text style={styles.adminDesc}>
+                  {t('adminModeDesc', 'Dịch nhiều ngôn ngữ × nhiều phong cách cùng lúc để làm giàu kho video')}
+                </Text>
+
+                {/* Select Languages */}
+                <View style={styles.multiSelectSection}>
+                  <Text style={styles.multiSelectLabel}>
+                    {t('selectLanguages', 'Chọn ngôn ngữ')} ({selectedLanguages.length}/10)
+                  </Text>
+                  <View style={styles.checkboxGrid}>
+                    {languages.map((lang) => (
+                      <TouchableOpacity
+                        key={lang.code}
+                        style={[
+                          styles.checkbox,
+                          selectedLanguages.includes(lang.code) && styles.checkboxActive,
+                        ]}
+                        onPress={() => {
+                          if (selectedLanguages.includes(lang.code)) {
+                            setSelectedLanguages(selectedLanguages.filter((l) => l !== lang.code));
+                          } else {
+                            setSelectedLanguages([...selectedLanguages, lang.code]);
+                          }
+                        }}
+                        disabled={loading}
+                      >
+                        <Text
+                          style={[
+                            styles.checkboxText,
+                            selectedLanguages.includes(lang.code) && styles.checkboxTextActive,
+                          ]}
+                        >
+                          {lang.nativeName}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Select Styles */}
+                <View style={styles.multiSelectSection}>
+                  <Text style={styles.multiSelectLabel}>
+                    {t('selectStyles', 'Chọn phong cách')} ({selectedStyles.length}/6)
+                  </Text>
+                  <View style={styles.checkboxGrid}>
+                    {translationStyles.map((style) => (
+                      <TouchableOpacity
+                        key={style.code}
+                        style={[
+                          styles.checkbox,
+                          selectedStyles.includes(style.code) && styles.checkboxActive,
+                        ]}
+                        onPress={() => {
+                          if (selectedStyles.includes(style.code)) {
+                            setSelectedStyles(selectedStyles.filter((s) => s !== style.code));
+                          } else {
+                            setSelectedStyles([...selectedStyles, style.code]);
+                          }
+                        }}
+                        disabled={loading}
+                      >
+                        <Text
+                          style={[
+                            styles.checkboxText,
+                            selectedStyles.includes(style.code) && styles.checkboxTextActive,
+                          ]}
+                        >
+                          {style.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Total combinations */}
+                <View style={styles.adminStats}>
+                  <Text style={styles.adminStatsText}>
+                    📊 Tổng số bản dịch: {selectedLanguages.length} × {selectedStyles.length} ={' '}
+                    <Text style={styles.adminStatsHighlight}>
+                      {selectedLanguages.length * selectedStyles.length}
+                    </Text>
+                  </Text>
+                </View>
+              </View>
+            )}
+          </View>
+        )}
 
         {/* Generate Button */}
         <TouchableOpacity
@@ -781,5 +1007,102 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#4B5563',
     lineHeight: 28,
+  },
+  // Admin mode styles
+  adminSection: {
+    backgroundColor: '#FFF7ED',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: '#FDBA74',
+  },
+  adminHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  adminTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#9A3412',
+  },
+  adminToggle: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  adminToggleActive: {
+    backgroundColor: '#DC2626',
+  },
+  adminToggleText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  adminToggleTextActive: {
+    color: '#FFFFFF',
+  },
+  adminContent: {
+    marginTop: 8,
+  },
+  adminDesc: {
+    fontSize: 13,
+    color: '#78350F',
+    marginBottom: 16,
+    lineHeight: 18,
+  },
+  multiSelectSection: {
+    marginBottom: 16,
+  },
+  multiSelectLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#9A3412',
+    marginBottom: 8,
+  },
+  checkboxGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  checkbox: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+    backgroundColor: '#FFFFFF',
+  },
+  checkboxActive: {
+    backgroundColor: '#DC2626',
+    borderColor: '#DC2626',
+  },
+  checkboxText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#9A3412',
+  },
+  checkboxTextActive: {
+    color: '#FFFFFF',
+  },
+  adminStats: {
+    backgroundColor: '#FEF3C7',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+  },
+  adminStatsText: {
+    fontSize: 14,
+    color: '#78350F',
+    fontWeight: '500',
+  },
+  adminStatsHighlight: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#DC2626',
   },
 });

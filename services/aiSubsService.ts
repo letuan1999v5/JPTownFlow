@@ -22,6 +22,7 @@ import {
   TranslationResponse,
   SubtitleCue,
   TargetLanguage,
+  TranslationStyle,
 } from '../types/subtitle';
 
 /**
@@ -58,10 +59,12 @@ export const calculateCredits = (
 
 /**
  * Check if video translation already exists in cache
+ * Now checks for specific language + style combination
  */
 export const checkTranslationCache = async (
   videoHashId: string,
-  targetLanguage: TargetLanguage
+  targetLanguage: TargetLanguage,
+  translationStyle: TranslationStyle = 'standard'
 ): Promise<VideoMetadata | null> => {
   try {
     const videoRef = doc(db, 'videos_metadata', videoHashId);
@@ -73,8 +76,11 @@ export const checkTranslationCache = async (
 
     const videoData = videoSnap.data() as VideoMetadata;
 
-    // Check if translation exists for target language
-    if (videoData.translations && videoData.translations[targetLanguage]) {
+    // Create translation key: language_style (e.g., 'vi_standard', 'en_educational')
+    const translationKey = `${targetLanguage}_${translationStyle}`;
+
+    // Check if translation exists for this specific language + style combination
+    if (videoData.translations && videoData.translations[translationKey]) {
       return videoData;
     }
 

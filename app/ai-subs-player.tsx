@@ -37,6 +37,7 @@ export default function AISubsPlayerScreen() {
 
   const videoHashId = params.videoHashId as string;
   const targetLanguage = params.targetLanguage as string;
+  const translationStyle = (params.translationStyle as string) || 'standard';
   const historyId = params.historyId as string;
 
   const [loading, setLoading] = useState(true);
@@ -48,7 +49,7 @@ export default function AISubsPlayerScreen() {
     if (videoHashId && targetLanguage) {
       loadVideoData();
     }
-  }, [videoHashId, targetLanguage]);
+  }, [videoHashId, targetLanguage, translationStyle]);
 
   const loadVideoData = async () => {
     try {
@@ -66,15 +67,57 @@ export default function AISubsPlayerScreen() {
         return;
       }
 
-      // Check if translation exists
-      const translation = video.translations[targetLanguage];
+      // Build translation key: language_style (e.g., 'vi_standard', 'en_educational')
+      const translationKey = `${targetLanguage}_${translationStyle}`;
+
+      // Check if exact translation (language + style) exists
+      let translation = video.translations[translationKey];
+
       if (!translation) {
-        Alert.alert(
-          t('error', 'Error'),
-          t('translationNotFound', 'Translation not found for this language'),
-          [{ text: t('ok', 'OK'), onPress: () => router.back() }]
+        // Exact match not found - check if any translation for this language exists
+        const anyTranslationForLanguage = Object.keys(video.translations).find(key =>
+          key.startsWith(`${targetLanguage}_`)
         );
-        return;
+
+        if (anyTranslationForLanguage) {
+          // Found translation with different style - ask user
+          const existingStyle = anyTranslationForLanguage.split('_')[1];
+          await new Promise((resolve) => {
+            Alert.alert(
+              t('translationStyleMismatch', 'Phong cách dịch khác'),
+              t('translationStyleMismatchMessage', `Video này đã có bản dịch ${targetLanguage} nhưng với phong cách "${existingStyle}".\n\nBạn muốn:`),
+              [
+                {
+                  text: t('watchExisting', 'Vẫn xem'),
+                  onPress: () => {
+                    translation = video.translations[anyTranslationForLanguage];
+                    resolve(true);
+                  },
+                },
+                {
+                  text: t('translateAgain', 'Dịch lại'),
+                  onPress: () => {
+                    router.back();
+                    resolve(false);
+                  },
+                  style: 'cancel',
+                },
+              ]
+            );
+          });
+
+          if (!translation) {
+            return; // User chose to go back and translate again
+          }
+        } else {
+          // No translation for this language at all
+          Alert.alert(
+            t('error', 'Error'),
+            t('translationNotFound', 'Translation not found for this language'),
+            [{ text: t('ok', 'OK'), onPress: () => router.back() }]
+          );
+          return;
+        }
       }
 
       setVideoData(video);
