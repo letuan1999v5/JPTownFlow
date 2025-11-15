@@ -119,16 +119,6 @@ function extractYouTubeVideoId(url) {
     return null;
 }
 /**
- * Convert milliseconds to SRT time format (HH:MM:SS,mmm)
- */
-function millisecondsToSRT(ms) {
-    const hours = Math.floor(ms / 3600000);
-    const minutes = Math.floor((ms % 3600000) / 60000);
-    const seconds = Math.floor((ms % 60000) / 1000);
-    const milliseconds = ms % 1000;
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')},${String(milliseconds).padStart(3, '0')}`;
-}
-/**
  * Fetch YouTube captions using YouTube Data API v3
  * This is the ONLY officially supported method by YouTube
  */
