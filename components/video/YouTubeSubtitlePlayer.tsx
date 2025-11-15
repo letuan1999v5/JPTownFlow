@@ -128,12 +128,12 @@ export default function YouTubeSubtitlePlayer({
     /* Subtitle overlay - use absolute positioning to stay within container */
     #subtitle-overlay {
       position: absolute;
-      bottom: 10px; /* Very close to bottom */
+      bottom: 50px; /* Higher to avoid fullscreen button */
       left: 0;
       right: 0;
       text-align: center;
       pointer-events: none;
-      z-index: 999999 !important; /* Much higher than YouTube controls */
+      z-index: 999998 !important; /* Below fullscreen button */
       padding: 0 16px;
       transform: translateZ(999px) !important; /* Create new stacking context on top */
       isolation: isolate; /* Create isolated stacking context */
@@ -158,7 +158,7 @@ export default function YouTubeSubtitlePlayer({
     /* Landscape mode - responsive via CSS media query */
     @media (orientation: landscape) {
       #subtitle-overlay {
-        bottom: 15px; /* Slightly higher in landscape for controls */
+        bottom: 55px; /* Higher in landscape to avoid button */
         padding: 0 30px;
       }
 
@@ -173,37 +173,48 @@ export default function YouTubeSubtitlePlayer({
       display: none !important;
     }
 
-    /* Custom fullscreen button */
+    /* Custom fullscreen button - positioned like YouTube's native button */
     #custom-fullscreen-btn {
       position: absolute;
-      top: 10px;
-      right: 10px;
-      width: 48px;
-      height: 48px;
-      background: rgba(0, 0, 0, 0.7);
+      bottom: 12px;
+      right: 12px;
+      width: 36px;
+      height: 36px;
+      background: rgba(28, 28, 28, 0.85);
       border: none;
-      border-radius: 4px;
+      border-radius: 2px;
       cursor: pointer;
-      z-index: 999998;
+      z-index: 9999999 !important; /* Highest z-index - always on top */
       display: flex;
       align-items: center;
       justify-content: center;
       pointer-events: auto;
-      transition: background 0.2s;
+      transition: background 0.15s;
+      opacity: 0.9;
     }
 
     #custom-fullscreen-btn:hover {
-      background: rgba(0, 0, 0, 0.9);
+      background: rgba(28, 28, 28, 0.95);
+      opacity: 1;
     }
 
     #custom-fullscreen-btn:active {
-      background: rgba(0, 0, 0, 1);
+      background: rgba(50, 50, 50, 1);
     }
 
     #custom-fullscreen-btn svg {
       fill: white;
-      width: 24px;
-      height: 24px;
+      width: 20px;
+      height: 20px;
+    }
+
+    /* In fullscreen mode, move button to bottom-right */
+    #container:fullscreen #custom-fullscreen-btn,
+    #container:-webkit-full-screen #custom-fullscreen-btn,
+    #container:-moz-full-screen #custom-fullscreen-btn,
+    #container:-ms-fullscreen #custom-fullscreen-btn {
+      bottom: 20px;
+      right: 20px;
     }
 
     /* When container is in fullscreen */
@@ -212,10 +223,10 @@ export default function YouTubeSubtitlePlayer({
     #container:-moz-full-screen #subtitle-overlay,
     #container:-ms-fullscreen #subtitle-overlay {
       position: fixed !important;
-      bottom: 60px !important;
+      bottom: 70px !important; /* Higher in fullscreen to avoid button */
       left: 0 !important;
       right: 0 !important;
-      z-index: 999999 !important;
+      z-index: 999998 !important; /* Below fullscreen button */
       transform: translateZ(9999px) !important;
     }
 
