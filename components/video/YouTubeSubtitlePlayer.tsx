@@ -1,7 +1,7 @@
 // components/video/YouTubeSubtitlePlayer.tsx
 // YouTube player with custom subtitle overlay using direct iframe embed
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { View, StyleSheet, Dimensions, Text, Platform, TouchableOpacity, Linking } from 'react-native';
+import { View, StyleSheet, Dimensions, Text, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { SubtitleCue } from '../../types/subtitle';
 
@@ -167,6 +167,16 @@ export default function YouTubeSubtitlePlayer({
     .hidden {
       display: none !important;
     }
+
+    /* Fullscreen support - ensure subtitle stays visible in fullscreen */
+    #container:fullscreen #subtitle-overlay,
+    #container:-webkit-full-screen #subtitle-overlay,
+    #container:-moz-full-screen #subtitle-overlay,
+    #container:-ms-fullscreen #subtitle-overlay {
+      display: block;
+      position: fixed;
+      z-index: 2147483647; /* Maximum z-index for fullscreen */
+    }
   </style>
 </head>
 <body>
@@ -178,10 +188,11 @@ export default function YouTubeSubtitlePlayer({
       allowfullscreen
       referrerpolicy="strict-origin-when-cross-origin"
     ></iframe>
-  </div>
 
-  <div id="subtitle-overlay">
-    <div id="subtitle-text" class="hidden"></div>
+    <!-- Subtitle overlay inside container for fullscreen support -->
+    <div id="subtitle-overlay">
+      <div id="subtitle-text" class="hidden"></div>
+    </div>
   </div>
 
   <script>
@@ -277,13 +288,6 @@ export default function YouTubeSubtitlePlayer({
     }
   };
 
-  // Handle open in YouTube app
-  const handleOpenInYouTube = () => {
-    Linking.openURL(videoUrl).catch(err => {
-      console.error('Failed to open YouTube:', err);
-    });
-  };
-
   // Calculate container height based on orientation
   const containerHeight = isLandscape
     ? dimensions.height // Fullscreen in landscape
@@ -322,13 +326,6 @@ export default function YouTubeSubtitlePlayer({
         allowUniversalAccessFromFileURLs={true}
         allowFileAccess={true}
       />
-
-      {/* Fallback button overlay */}
-      <View style={styles.fallbackOverlay}>
-        <TouchableOpacity style={styles.openYoutubeBtn} onPress={handleOpenInYouTube}>
-          <Text style={styles.openYoutubeBtnText}>If video doesn't play, tap to open in YouTube ▶</Text>
-        </TouchableOpacity>
-      </View>
     </View>
   );
 }
@@ -353,24 +350,5 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     textAlign: 'center',
-  },
-  fallbackOverlay: {
-    position: 'absolute',
-    bottom: 10,
-    left: 10,
-    right: 10,
-    zIndex: 1,
-  },
-  openYoutubeBtn: {
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 6,
-    alignSelf: 'center',
-  },
-  openYoutubeBtnText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '500',
   },
 });
